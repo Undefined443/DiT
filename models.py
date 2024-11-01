@@ -242,8 +242,8 @@ class DiT(nn.Module):
     def add_noise(self, x, t):
         """修改：在特征空间添加噪声"""
         noise = torch.randn_like(x)
-        sqrt_alpha_t = extract_and_expand(self.sqrt_alphas_cumprod, t, x)
-        sqrt_one_minus_alpha_t = extract_and_expand(self.sqrt_one_minus_alphas_cumprod, t, x)
+        sqrt_alpha_t = _extract_into_tensor(self.sqrt_alphas_cumprod, t, x)
+        sqrt_one_minus_alpha_t = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x)
         return sqrt_alpha_t * x + sqrt_one_minus_alpha_t * noise
 
     def forward(self, x, t, y):
@@ -398,3 +398,17 @@ DiT_models = {
     'DiT-B/2':  DiT_B_2,   'DiT-B/4':  DiT_B_4,   'DiT-B/8':  DiT_B_8,
     'DiT-S/2':  DiT_S_2,   'DiT-S/4':  DiT_S_4,   'DiT-S/8':  DiT_S_8,
 }
+
+def _extract_into_tensor(arr, timesteps, broadcast_shape):
+    """
+    Extract values from a 1-D numpy array for a batch of indices.
+    :param arr: the 1-D numpy array.
+    :param timesteps: a tensor of indices into the array to extract.
+    :param broadcast_shape: a larger shape of K dimensions with the batch
+                            dimension equal to the length of timesteps.
+    :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
+    """
+    res = torch.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
+    while len(res.shape) < len(broadcast_shape):
+        res = res[..., None]
+    return res + torch.zeros(broadcast_shape, device=timesteps.device)
