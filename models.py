@@ -157,7 +157,7 @@ class DiT(nn.Module):
         mlp_ratio=4.0,
         class_dropout_prob=0.1,
         num_classes=1000,
-        learn_sigma=True,
+        learn_sigma=False,
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -173,9 +173,15 @@ class DiT(nn.Module):
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        self.blocks = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
+        # 修改：将 Transformer 块分成两部分
+        split_point = depth // 2
+        self.blocks_first = nn.ModuleList([
+            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
         ])
+        self.blocks_second = nn.ModuleList([
+            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(depth - split_point)
+        ])
+
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
 
@@ -205,9 +211,12 @@ class DiT(nn.Module):
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
         # Zero-out adaLN modulation layers in DiT blocks:
-        for block in self.blocks:
-            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
-            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        for block_first in self.blocks_first:
+            nn.init.constant_(block_first.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block_first.adaLN_modulation[-1].bias, 0)
+        for block_second in self.blocks_second:
+            nn.init.constant_(block_second.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block_second.adaLN_modulation[-1].bias, 0)
 
         # Zero-out output layers:
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
@@ -230,6 +239,13 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
+    def add_noise(self, x, t):
+        """修改：在特征空间添加噪声"""
+        noise = torch.randn_like(x)
+        sqrt_alpha_t = extract_and_expand(self.sqrt_alphas_cumprod, t, x)
+        sqrt_one_minus_alpha_t = extract_and_expand(self.sqrt_one_minus_alphas_cumprod, t, x)
+        return sqrt_alpha_t * x + sqrt_one_minus_alpha_t * noise
+
     def forward(self, x, t, y):
         """
         Forward pass of DiT.
@@ -241,8 +257,22 @@ class DiT(nn.Module):
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
-        for block in self.blocks:
-            x = block(x, c)                      # (N, T, D)
+
+        # 第一部分 Transformer 处理
+        for block in self.blocks_first:
+            x = block(x, c)
+
+        # 在中间添加噪声
+        N, T, D = x.shape
+        h = w = int(math.sqrt(T))
+        x = x.reshape(N, h, w, D).permute(0, 3, 1, 2)  # 转回图像格式
+        x = self.add_noise(x, t)  # 添加噪声
+        x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
+
+        # 第二部分 Transformer 处理
+        for block in self.blocks_second:
+            x = block(x, c)
+
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x

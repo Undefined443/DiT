@@ -147,7 +147,10 @@ def main(args):
     ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
     requires_grad(ema, False)
     model = DDP(model.to(device), device_ids=[rank])
-    diffusion = create_diffusion(timestep_respacing="")  # default: 1000 steps, linear noise schedule
+    diffusion = create_diffusion(
+        timestep_respacing="",
+        learn_sigma=False,
+        predict_xstart=True)  # default: 1000 steps, linear noise schedule
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
