@@ -1,6 +1,6 @@
 pretrained_models/
 results/
 samples/
-stability/
+stabilityai/
 *.png
 __pycache__/
