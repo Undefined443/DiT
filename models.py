@@ -239,13 +239,6 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def add_noise(self, x, t):
-        """修改：在特征空间添加噪声"""
-        noise = torch.randn_like(x)
-        sqrt_alpha_t = _extract_into_tensor(self.sqrt_alphas_cumprod, t, x)
-        sqrt_one_minus_alpha_t = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x)
-        return sqrt_alpha_t * x + sqrt_one_minus_alpha_t * noise
-
     def forward(self, x, t, y, q_sample, noise=None):
         """
         Forward pass of DiT.
@@ -269,6 +262,7 @@ class DiT(nn.Module):
         x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
         if noise is None:
             noise = torch.randn_like(x)
+        assert noise.shape == x.shape, "noise 维度和 x_0 维度不匹配"
         x = q_sample(x, t, noise)
         x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
@@ -280,14 +274,14 @@ class DiT(nn.Module):
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, x, t, y, cfg_scale):
+    def forward_with_cfg(self, x, t, y, cfg_scale, q_sample):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y)
+        model_out = self.forward(combined, t, y, q_sample)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
@@ -401,17 +395,3 @@ DiT_models = {
     'DiT-B/2':  DiT_B_2,   'DiT-B/4':  DiT_B_4,   'DiT-B/8':  DiT_B_8,
     'DiT-S/2':  DiT_S_2,   'DiT-S/4':  DiT_S_4,   'DiT-S/8':  DiT_S_8,
 }
-
-def _extract_into_tensor(arr, timesteps, broadcast_shape):
-    """
-    Extract values from a 1-D numpy array for a batch of indices.
-    :param arr: the 1-D numpy array.
-    :param timesteps: a tensor of indices into the array to extract.
-    :param broadcast_shape: a larger shape of K dimensions with the batch
-                            dimension equal to the length of timesteps.
-    :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
-    """
-    res = torch.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
-    while len(res.shape) < len(broadcast_shape):
-        res = res[..., None]
-    return res + torch.zeros(broadcast_shape, device=timesteps.device)
