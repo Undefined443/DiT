@@ -112,10 +112,7 @@ def main(args):
     Trains a new DiT model.
     """
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
-    info = ''
-    for id in range(torch.cuda.device_count()):
-        p = torch.cuda.get_device_properties(id)
-        print(p)
+
     # Setup DDP:
     dist.init_process_group("nccl")
     assert args.global_batch_size % dist.get_world_size() == 0, f"Batch size must be divisible by world size."

@@ -263,7 +263,8 @@ class DiT(nn.Module):
         if noise is None:
             noise = torch.randn_like(x)
         assert noise.shape == x.shape, "noise 维度和 x_0 维度不匹配"
-        x = q_sample(x, t, noise)
+        print(t)
+        x = q_sample(x, t, noise)  # 加噪
         x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
         # 第二部分 Transformer 处理
