@@ -107,19 +107,19 @@ def center_crop_arr(pil_image, image_size):
 #                                  Training Loop                                #
 #################################################################################
 
+def gpu_info() -> str:
+    info = ''
+    for id in range(torch.cuda.device_count()):
+        p = torch.cuda.get_device_properties(id)
+        info += f'CUDA:{id} ({p.name}, {p.total_memory / (1 << 20):.0f}MiB)\n'
+    return info[:-1]
+
 def main(args):
     """
     Trains a new DiT model.
     """
-    if torch.cuda.is_available():
-        # 打印当前使用的GPU设备ID
-        print("Current device ID:", torch.cuda.current_device())
-        # 打印设备名称
-        print("Device name:", torch.cuda.get_device_name(torch.cuda.current_device()))
-    else:
-        print("CUDA is not available.")
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
-
+    print(gpu_info())
     # Setup DDP:
     dist.init_process_group("nccl")
     assert args.global_batch_size % dist.get_world_size() == 0, f"Batch size must be divisible by world size."
