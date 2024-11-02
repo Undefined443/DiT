@@ -111,6 +111,13 @@ def main(args):
     """
     Trains a new DiT model.
     """
+    if torch.cuda.is_available():
+        # 打印当前使用的GPU设备ID
+        print("Current device ID:", torch.cuda.current_device())
+        # 打印设备名称
+        print("Device name:", torch.cuda.get_device_name(torch.cuda.current_device()))
+    else:
+        print("CUDA is not available.")
     assert torch.cuda.is_available(), "Training currently requires at least one GPU."
 
     # Setup DDP:
