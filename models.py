@@ -246,13 +246,14 @@ class DiT(nn.Module):
         sqrt_one_minus_alpha_t = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x)
         return sqrt_alpha_t * x + sqrt_one_minus_alpha_t * noise
 
-    def forward(self, x, t, y):
+    def forward(self, x, t, y, q_sample, noise=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+        # 将输入 x 转换为嵌入表示
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
@@ -264,9 +265,11 @@ class DiT(nn.Module):
 
         # 在中间添加噪声
         N, T, D = x.shape
-        h = w = int(math.sqrt(T))
-        x = x.reshape(N, h, w, D).permute(0, 3, 1, 2)  # 转回图像格式
-        x = self.add_noise(x, t)  # 添加噪声
+        sqrt_T = int(math.sqrt(T))
+        x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
+        if noise is None:
+            noise = torch.randn_like(x)
+        x = q_sample(x, t, noise)
         x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
         # 第二部分 Transformer 处理

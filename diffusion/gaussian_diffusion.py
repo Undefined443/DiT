@@ -724,15 +724,17 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
+        # 预处理一些参数
         if model_kwargs is None:
             model_kwargs = {}
-        if noise is None:
-            noise = th.randn_like(x_start)
-        x_t = self.q_sample(x_start, t, noise=noise)
+        # if noise is None:
+        #     noise = th.randn_like(x_start)
 
         terms = {}
 
+        # 如果损失类型是 KL 或 RESCALED_KL，则计算 KL 散度
         if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
+            # 计算变分下界损失 Variational Bound terms Bits Per Dimension
             terms["loss"] = self._vb_terms_bpd(
                 model=model,
                 x_start=x_start,
@@ -743,19 +745,25 @@ class GaussianDiffusion:
             )["output"]
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
+        # 如果损失类型是 MSE 或 RESCALED_MSE，则计算 MSE
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x_t, t, **model_kwargs)
-
+            # NOTE: 在这里计算模型输出。这里调用了 DiT 的 forward 函数
+            # NOTE: 这里将加噪函数也传入 forward 函数
+            model_kwargs["q_sample"] = self.q_sample
+            model_kwargs["noise"] = noise
+            model_output = model(x_start, t, **model_kwargs)  # 原先输入加噪的 x_t，现在输入 x_0
+            # 如果模型变量类型是 LEARNED 或 LEARNED_RANGE，则计算变分边界（learn_sigma=True）
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
             ]:
-                B, C = x_t.shape[:2]
-                assert model_output.shape == (B, C * 2, *x_t.shape[2:])
-                model_output, model_var_values = th.split(model_output, C, dim=1)
+                B, C = x_t.shape[:2]  # 获取 batch size 和通道数
+                assert model_output.shape == (B, C * 2, *x_t.shape[2:])  # 检查模型输出形状是否正确
+                model_output, model_var_values = th.split(model_output, C, dim=1)  # 将模型输出拆分为模型输出和方差
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
-                frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
+                frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)  # 将模型输出和方差连接起来
+                # 计算变分下界损失
                 terms["vb"] = self._vb_terms_bpd(
                     model=lambda *args, r=frozen_out: r,
                     x_start=x_start,
@@ -768,6 +776,7 @@ class GaussianDiffusion:
                     # Without a factor of 1/1000, the VB term hurts the MSE term.
                     terms["vb"] *= self.num_timesteps / 1000.0
 
+            # 计算目标值
             target = {
                 ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(
                     x_start=x_start, x_t=x_t, t=t
@@ -776,7 +785,7 @@ class GaussianDiffusion:
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
             assert model_output.shape == target.shape == x_start.shape
-            terms["mse"] = mean_flat((target - model_output) ** 2)
+            terms["mse"] = mean_flat((target - model_output) ** 2)  # 计算 MSE 损失
             if "vb" in terms:
                 terms["loss"] = terms["mse"] + terms["vb"]
             else:
