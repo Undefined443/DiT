@@ -750,7 +750,10 @@ class GaussianDiffusion:
             # NOTE: 在这里计算模型输出。这里调用了 DiT 的 forward 函数
             # NOTE: 这里将加噪函数也传入 forward 函数
             model_kwargs["q_sample"] = self.q_sample
-            model_kwargs["noise"] = noise
+            # model_kwargs["noise"] = noise  # 不需要传入噪声
+            # 确保 model_kwargs 包含必要的参数
+            assert "y" in model_kwargs, "model_kwargs 必须包含 y"
+            assert "q_sample" in model_kwargs, "model_kwargs 必须包含 q_sample"
             model_output = model(x_start, t, **model_kwargs)  # 原先输入加噪的 x_t，现在输入 x_0
             # 如果模型变量类型是 LEARNED 或 LEARNED_RANGE，则计算变分边界（learn_sigma=True）
             if self.model_var_type in [
