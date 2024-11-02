@@ -735,6 +735,7 @@ class GaussianDiffusion:
 
         # 如果损失类型是 KL 或 RESCALED_KL，则计算 KL 散度
         if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
+            raise NotImplementedError("暂未实现")
             # 计算变分下界损失 Variational Bound terms Bits Per Dimension
             terms["loss"] = self._vb_terms_bpd(
                 model=model,
@@ -754,13 +755,14 @@ class GaussianDiffusion:
             # model_kwargs["noise"] = noise  # 不需要传入噪声
             # 确保 model_kwargs 包含必要的参数
             model_output = model(x_start, t, **model_kwargs)  # 原先输入加噪的 x_t，现在输入 x_0
-            # 如果模型变量类型是 LEARNED 或 LEARNED_RANGE，则计算变分边界（learn_sigma=True）
+            # 如果模型变量类型是 LEARNED 或 LEARNED_RANGE，则计算变分下界（learn_sigma=True）
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
             ]:
-                B, C = x_t.shape[:2]  # 获取 batch size 和通道数
-                assert model_output.shape == (B, C * 2, *x_t.shape[2:])  # 检查模型输出形状是否正确
+                raise NotImplementedError("暂未实现")
+                B, C = x_start.shape[:2]  # 获取 batch size 和通道数
+                assert model_output.shape == (B, C * 2, *x_start.shape[2:])  # 检查模型输出形状是否正确
                 model_output, model_var_values = th.split(model_output, C, dim=1)  # 将模型输出拆分为模型输出和方差
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
@@ -780,9 +782,9 @@ class GaussianDiffusion:
 
             # 计算目标值
             target = {
-                ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(
-                    x_start=x_start, x_t=x_t, t=t
-                )[0],
+                # ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(
+                #     x_start=x_start, x_t=x_t, t=t
+                # )[0],
                 ModelMeanType.START_X: x_start,
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
