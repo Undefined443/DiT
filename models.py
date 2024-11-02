@@ -246,6 +246,11 @@ class DiT(nn.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+        print("q_sample: ", q_sample)
+        print("noise: ", noise)
+        print("x: ", x)
+        print("t: ", t)
+        print("y: ", y)
         # 将输入 x 转换为嵌入表示
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
