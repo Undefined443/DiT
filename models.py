@@ -257,13 +257,14 @@ class DiT(nn.Module):
             x = block(x, c)
 
         # 在中间添加噪声
-        N, T, D = x.shape
-        sqrt_T = int(math.sqrt(T))
-        x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
-        if noise is None:
-            noise = torch.randn_like(x)
-        x = q_sample(x_start=x, noise=noise)  # 加噪
-        x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
+        if q_sample is not None:
+            N, T, D = x.shape
+            sqrt_T = int(math.sqrt(T))
+            x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
+            if noise is None:
+                noise = torch.randn_like(x)
+            x = q_sample(x_start=x, noise=noise)  # 加噪
+            x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
         # 第二部分 Transformer 处理
         for block in self.blocks_second:
@@ -273,14 +274,14 @@ class DiT(nn.Module):
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, x, t, y, cfg_scale, q_sample):
+    def forward_with_cfg(self, x, t, y, cfg_scale):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y, q_sample)
+        model_out = self.forward(combined, t, y)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
