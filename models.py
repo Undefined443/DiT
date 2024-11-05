@@ -176,7 +176,7 @@ class DiT(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
         # 修改：将 Transformer 块分成两部分
-        split_point = depth // 2
+        split_point = depth // 6
         self.blocks_first = nn.ModuleList([
             DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
         ])
