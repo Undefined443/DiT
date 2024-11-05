@@ -266,20 +266,6 @@ class DiT(nn.Module):
             if noise is None:
                 noise = torch.randn_like(x)
             x = q_sample(x_start=x, noise=noise)  # 加噪
-
-            # 将加噪后的图像输出
-            print("加噪后的图像形状:", x.shape)
-            # 保存图像
-            save_path = "noised_images"
-            os.makedirs(save_path, exist_ok=True)
-            # 将图像转换到 [0,1] 范围
-            x_norm = (x - x.min()) / (x.max() - x.min())
-            # 转换为 PIL 图像并保存
-            for i in range(x.shape[0]):
-                img = x_norm[i].permute(1,2,0).cpu().detach().numpy()
-                img = (img * 255).astype(np.uint8)
-                Image.fromarray(img).save(os.path.join(save_path, f"noised_{i}.png"))
-
             x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
         # 第二部分 Transformer 处理
