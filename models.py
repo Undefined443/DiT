@@ -276,7 +276,7 @@ class DiT(nn.Module):
             x_norm = (x - x.min()) / (x.max() - x.min())
             # 转换为 PIL 图像并保存
             for i in range(x.shape[0]):
-                img = x_norm[i].permute(1,2,0).cpu().numpy()
+                img = x_norm[i].permute(1,2,0).cpu().detach().numpy()
                 img = (img * 255).astype(np.uint8)
                 Image.fromarray(img).save(os.path.join(save_path, f"noised_{i}.png"))
 
