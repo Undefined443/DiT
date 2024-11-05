@@ -163,7 +163,7 @@ if __name__ == "__main__":
                         help="By default, use TF32 matmuls. This massively accelerates sampling on Ampere GPUs.")
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
-    parser.add_argument("--predict_xstart", type=bool, default=False)
-    parser.add_argument("--learn_sigma", type=bool, default=True)
+    parser.add_argument("--predict-xstart", type=bool, default=False)
+    parser.add_argument("--learn-sigma", type=bool, default=True)
     args = parser.parse_args()
     main(args)

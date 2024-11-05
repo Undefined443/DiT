@@ -80,6 +80,6 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
-    parser.add_argument("--learn_sigma", type=bool, default=True)
+    parser.add_argument("--learn-sigma", type=bool, default=True)
     args = parser.parse_args()
     main(args)
