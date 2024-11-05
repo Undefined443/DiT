@@ -9,6 +9,8 @@
 # MAE: https://github.com/facebookresearch/mae/blob/main/models_mae.py
 # --------------------------------------------------------
 
+import os
+from tkinter import Image
 import torch
 import torch.nn as nn
 import numpy as np
