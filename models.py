@@ -351,6 +351,7 @@ class DiT(nn.Module):
         img = transforms.ToPILImage()(img_tensor.cpu())
         # 保存图像
         img.save("x_emb_final.png")
+        sys.exit()
         return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale):
