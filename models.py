@@ -290,9 +290,10 @@ class DiT(nn.Module):
                 x = block(x, c)
 
             print("第一部分 Transformer 处理")
-            T, D = x[0].shape
+            x_vis = x[0]
+            T, D = x_vis.shape
             sqrt_T = int(math.sqrt(T))
-            img_tensor = x.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
+            img_tensor = x_vis.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
             if img_tensor.size(0) >= 3:
                 img_tensor = img_tensor[:3]  # 取前 3 个通道
             else:
@@ -300,7 +301,7 @@ class DiT(nn.Module):
             # 归一化到 [0, 1]，便于转换为图像格式
             img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
             # 将 tensor 转换为 PIL 图像
-            img = transforms.ToPILImage(img_tensor)
+            img = transforms.ToPILImage()(img_tensor.cpu())
             # 保存图像
             img.save("x_emb_first.png")
 
@@ -314,9 +315,10 @@ class DiT(nn.Module):
             x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
             print("加噪")
-            T, D = x[0].shape
+            x_vis = x[0]
+            T, D = x_vis.shape
             sqrt_T = int(math.sqrt(T))
-            img_tensor = x.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
+            img_tensor = x_vis.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
             if img_tensor.size(0) >= 3:
                 img_tensor = img_tensor[:3]  # 取前 3 个通道
             else:
@@ -324,7 +326,7 @@ class DiT(nn.Module):
             # 归一化到 [0, 1]，便于转换为图像格式
             img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
             # 将 tensor 转换为 PIL 图像
-            img = transforms.ToPILImage(img_tensor)
+            img = transforms.ToPILImage()(img_tensor.cpu())
             # 保存图像
             img.save("x_emb_noised.png")
 
@@ -345,7 +347,7 @@ class DiT(nn.Module):
         # 归一化到 [0, 1]，便于转换为图像格式
         img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
         # 将 tensor 转换为 PIL 图像
-        img = transforms.ToPILImage(img_tensor)
+        img = transforms.ToPILImage()(img_tensor.cpu())
         # 保存图像
         img.save("x_emb_final.png")
         return x
