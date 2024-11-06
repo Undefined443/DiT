@@ -16,6 +16,8 @@ import torch.nn as nn
 import numpy as np
 import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
+import sys
+import torchvision.transforms as transforms
 
 
 def modulate(x, shift, scale):
@@ -248,16 +250,62 @@ class DiT(nn.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+        print("x 输入")
+        img_tensor = x[0]
+        if img_tensor.size(0) >= 3:
+            img_tensor = img_tensor[:3]  # 取前 3 个通道
+        else:
+            img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
+        # 归一化到 [0, 1]，便于转换为图像格式
+        img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
+        # 将 tensor 转换为 PIL 图像
+        transform = transforms.ToPILImage()
+        img = transform(img_tensor)
+        # 保存图像
+        img.save("x.png")
+
         # 将输入 x 转换为嵌入表示
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = y                                # (N, D)
 
+        print("x 嵌入")
+        N, T, D = x.shape
+        sqrt_T = int(math.sqrt(T))
+        img_tensor = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
+        if img_tensor.size(0) >= 3:
+            img_tensor = img_tensor[:3]  # 取前 3 个通道
+        else:
+            img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
+        # 归一化到 [0, 1]，便于转换为图像格式
+        img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
+        # 将 tensor 转换为 PIL 图像
+        transform = transforms.ToPILImage()
+        img = transform(img_tensor)
+        # 保存图像
+        img.save("x_emb.png")
+
         if q_sample is not None:
             # 第一部分 Transformer 处理
             for block in self.blocks_first:
                 x = block(x, c)
+
+            print("第一部分 Transformer 处理")
+            N, T, D = x.shape
+            sqrt_T = int(math.sqrt(T))
+            img_tensor = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
+            if img_tensor.size(0) >= 3:
+                img_tensor = img_tensor[:3]  # 取前 3 个通道
+            else:
+                img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
+            # 归一化到 [0, 1]，便于转换为图像格式
+            img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
+            # 将 tensor 转换为 PIL 图像
+            transform = transforms.ToPILImage()
+            img = transform(img_tensor)
+            # 保存图像
+            img.save("x_emb_first.png")
 
             # 在中间添加噪声
             N, T, D = x.shape
@@ -267,6 +315,22 @@ class DiT(nn.Module):
                 noise = torch.randn_like(x)
             x = q_sample(x_start=x, noise=noise)  # 加噪
             x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
+
+            print("加噪")
+            N, T, D = x.shape
+            sqrt_T = int(math.sqrt(T))
+            img_tensor = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
+            if img_tensor.size(0) >= 3:
+                img_tensor = img_tensor[:3]  # 取前 3 个通道
+            else:
+                img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
+            # 归一化到 [0, 1]，便于转换为图像格式
+            img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
+            # 将 tensor 转换为 PIL 图像
+            transform = transforms.ToPILImage()
+            img = transform(img_tensor)
+            # 保存图像
+            img.save("x_emb_noised.png")
 
         # 第二部分 Transformer 处理
         c = t + y
