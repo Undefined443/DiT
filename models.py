@@ -259,7 +259,7 @@ class DiT(nn.Module):
         # 归一化到 [0, 1]，便于转换为图像格式
         img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
         # 将 tensor 转换为 PIL 图像
-        img = transforms.ToPILImage(img_tensor)
+        img = transforms.ToPILImage()(img_tensor.cpu())
         # 保存图像
         img.save("x.png")
 
