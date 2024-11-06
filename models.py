@@ -261,7 +261,7 @@ class DiT(nn.Module):
         # 将 tensor 转换为 PIL 图像
         img = transforms.ToPILImage()(img_tensor.cpu())
         # 保存图像
-        img.save("x.png")
+        img.save("1-x.png")
 
         # 将输入 x 转换为嵌入表示
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
@@ -283,7 +283,7 @@ class DiT(nn.Module):
         # 将 tensor 转换为 PIL 图像
         img = transforms.ToPILImage()(img_tensor.cpu())
         # 保存图像
-        img.save("x_emb.png")
+        img.save("2-x_emb.png")
 
         if q_sample is not None:
             # 第一部分 Transformer 处理
@@ -304,7 +304,7 @@ class DiT(nn.Module):
             # 将 tensor 转换为 PIL 图像
             img = transforms.ToPILImage()(img_tensor.cpu())
             # 保存图像
-            img.save("x_transformed.png")
+            img.save("3-x_transformed.png")
 
             # 在中间添加噪声
             N,T, D = x.shape
@@ -329,7 +329,7 @@ class DiT(nn.Module):
             # 将 tensor 转换为 PIL 图像
             img = transforms.ToPILImage()(img_tensor.cpu())
             # 保存图像
-            img.save("x_emb_noised.png")
+            img.save("4-x_emb_noised.png")
 
         # 第二部分 Transformer 处理
         c = t + y
@@ -350,7 +350,7 @@ class DiT(nn.Module):
         # 将 tensor 转换为 PIL 图像
         img = transforms.ToPILImage()(img_tensor.cpu())
         # 保存图像
-        img.save("x_final.png")
+        img.save("5-x_final.png")
         sys.exit()
         return x
 
