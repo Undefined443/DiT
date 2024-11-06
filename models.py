@@ -304,7 +304,7 @@ class DiT(nn.Module):
             # 将 tensor 转换为 PIL 图像
             img = transforms.ToPILImage()(img_tensor.cpu())
             # 保存图像
-            img.save("x_emb_first.png")
+            img.save("x_transformed.png")
 
             # 在中间添加噪声
             N,T, D = x.shape
