@@ -270,9 +270,10 @@ class DiT(nn.Module):
         c = y                                # (N, D)
 
         print("x 嵌入")
-        T, D = x[0].shape
+        x_vis = x[0]
+        T, D = x_vis.shape
         sqrt_T = int(math.sqrt(T))
-        img_tensor = x.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
+        img_tensor = x_vis.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
         if img_tensor.size(0) >= 3:
             img_tensor = img_tensor[:3]  # 取前 3 个通道
         else:
