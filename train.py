@@ -141,13 +141,14 @@ def main(args):
     latent_size = args.image_size // 8
     model = DiT_models[args.model](
         input_size=latent_size,
-        num_classes=args.num_classes
+        num_classes=args.num_classes,
+        learn_sigma=args.learn_sigma
     )
     # Note that parameter initialization is done within the DiT constructor
     ema = deepcopy(model).to(device)  # Create an EMA of the model for use after training
     requires_grad(ema, False)
     model = DDP(model.to(device), device_ids=[rank])
-    diffusion = create_diffusion(timestep_respacing="")  # default: 1000 steps, linear noise schedule
+    diffusion = create_diffusion(timestep_respacing="", learn_sigma=args.learn_sigma, predict_xstart=args.predict_xstart)  # default: 1000 steps, linear noise schedule
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -265,5 +266,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--log-every", type=int, default=100)
     parser.add_argument("--ckpt-every", type=int, default=50_000)
+    parser.add_argument("--predict-xstart", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--learn-sigma", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
     main(args)
