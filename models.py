@@ -256,12 +256,12 @@ class DiT(nn.Module):
         y = self.y_embedder(y, self.training)    # (N, D)
         c = y                                # (N, D)
 
-        if q_sample is not None:
-            # 第一部分 Transformer 处理
-            for block in self.blocks_first:
-                x = block(x, c)
+        # 第一部分 Transformer 处理
+        for block in self.blocks_first:
+            x = block(x, c)
 
-            # 在中间添加噪声
+        # 在中间添加噪声
+        if q_sample is not None:
             N,T, D = x.shape
             sqrt_T = int(math.sqrt(T))
             x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
