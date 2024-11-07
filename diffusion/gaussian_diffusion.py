@@ -487,12 +487,10 @@ class GaussianDiffusion:
         if device is None:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
-        # 噪声从模型中部添加，因此这里不再需要噪声
-        # if noise is not None:
-        #     img = noise
-        # else:
-        #     img = th.randn(*shape, device=device)
-        img = None
+        if noise is not None:
+            img = noise
+        else:
+            img = th.randn(*shape, device=device)
         indices = list(range(self.num_timesteps))[::-1]
 
         if progress:
