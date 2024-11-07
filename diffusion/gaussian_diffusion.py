@@ -163,6 +163,7 @@ class GaussianDiffusion:
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
         self.loss_type = loss_type
+        self.p_sample_count = 0
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -274,10 +275,12 @@ class GaussianDiffusion:
         """
         if model_kwargs is None:
             model_kwargs = {}
-
+        model_kwargs["p_sample_count"] = self.p_sample_count
+        
         B, C = x.shape[:2]
         assert t.shape == (B,)
         model_output = model(x, t, **model_kwargs)
+        self.p_sample_count += 1
         if isinstance(model_output, tuple):
             model_output, extra = model_output
         else:
@@ -484,11 +487,13 @@ class GaussianDiffusion:
         if device is None:
             device = next(model.parameters()).device
         assert isinstance(shape, (tuple, list))
-        if noise is not None:
-            img = noise
-        else:
-            img = th.randn(*shape, device=device)
-        indices = list(range(self.num_timesteps))[::-1]
+        # 噪声从模型中部添加，因此这里不再需要噪声
+        # if noise is not None:
+        #     img = noise
+        # else:
+        #     img = th.randn(*shape, device=device)
+        # indices = list(range(self.num_timesteps))[::-1]
+        img = None
 
         if progress:
             # Lazy import so that we don't depend on tqdm.

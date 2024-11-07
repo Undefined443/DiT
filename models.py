@@ -243,7 +243,7 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, q_sample=None, noise=None):
+    def forward(self, x, t, y, q_sample=None, noise=None, p_sample_count=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -260,15 +260,19 @@ class DiT(nn.Module):
         for block in self.blocks_first:
             x = block(x, c)
 
-        # 在中间添加噪声
-        if q_sample is not None:
-            N,T, D = x.shape
+        # 训练时在中间添加噪声
+        if q_sample is not None:  # 只有训练过程会传入 q_sample 函数
+            N, T, D = x.shape
             sqrt_T = int(math.sqrt(T))
             x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
             if noise is None:
                 noise = torch.randn_like(x)
             x = q_sample(x_start=x, noise=noise)  # 加噪
             x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
+
+        # 采样第一步，生成随机噪声作为 x
+        if p_sample_count == 0:  # 只有采样第一步 p_sample_count 为 0
+            x = torch.randn_like(x)
 
         # 第二部分 Transformer 处理
         c = t + y
@@ -279,14 +283,14 @@ class DiT(nn.Module):
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, x, t, y, cfg_scale):
+    def forward_with_cfg(self, x, t, y, cfg_scale, p_sample_count):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y)
+        model_out = self.forward(combined, t, y, p_sample_count)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
