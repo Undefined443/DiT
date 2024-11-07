@@ -250,61 +250,16 @@ class DiT(nn.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        print("x 输入")
-        img_tensor = x[0]
-        if img_tensor.size(0) >= 3:
-            img_tensor = img_tensor[:3]  # 取前 3 个通道
-        else:
-            img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
-        # 归一化到 [0, 1]，便于转换为图像格式
-        img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
-        # 将 tensor 转换为 PIL 图像
-        img = transforms.ToPILImage()(img_tensor.cpu())
-        # 保存图像
-        img.save("1-x.png")
-
         # 将输入 x 转换为嵌入表示
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = y                                # (N, D)
 
-        print("x 嵌入")
-        x_vis = x[0]
-        T, D = x_vis.shape
-        sqrt_T = int(math.sqrt(T))
-        img_tensor = x_vis.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
-        if img_tensor.size(0) >= 3:
-            img_tensor = img_tensor[:3]  # 取前 3 个通道
-        else:
-            img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
-        # 归一化到 [0, 1]，便于转换为图像格式
-        img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
-        # 将 tensor 转换为 PIL 图像
-        img = transforms.ToPILImage()(img_tensor.cpu())
-        # 保存图像
-        img.save("2-x_emb.png")
-
         if q_sample is not None:
             # 第一部分 Transformer 处理
             for block in self.blocks_first:
                 x = block(x, c)
-
-            print("第一部分 Transformer 处理")
-            x_vis = x[0]
-            T, D = x_vis.shape
-            sqrt_T = int(math.sqrt(T))
-            img_tensor = x_vis.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
-            if img_tensor.size(0) >= 3:
-                img_tensor = img_tensor[:3]  # 取前 3 个通道
-            else:
-                img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
-            # 归一化到 [0, 1]，便于转换为图像格式
-            img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
-            # 将 tensor 转换为 PIL 图像
-            img = transforms.ToPILImage()(img_tensor.cpu())
-            # 保存图像
-            img.save("3-x_transformed.png")
 
             # 在中间添加噪声
             N,T, D = x.shape
@@ -315,22 +270,6 @@ class DiT(nn.Module):
             x = q_sample(x_start=x, noise=noise)  # 加噪
             x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
-            print("加噪")
-            x_vis = x[0]
-            T, D = x_vis.shape
-            sqrt_T = int(math.sqrt(T))
-            img_tensor = x_vis.reshape(sqrt_T, sqrt_T, D).permute(2, 0, 1)  # 转回图像格式 (D, sqrt_T, sqrt_T)
-            if img_tensor.size(0) >= 3:
-                img_tensor = img_tensor[:3]  # 取前 3 个通道
-            else:
-                img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
-            # 归一化到 [0, 1]，便于转换为图像格式
-            img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
-            # 将 tensor 转换为 PIL 图像
-            img = transforms.ToPILImage()(img_tensor.cpu())
-            # 保存图像
-            img.save("4-x_emb_noised.png")
-
         # 第二部分 Transformer 处理
         c = t + y
         for block in self.blocks_second:
@@ -338,20 +277,6 @@ class DiT(nn.Module):
 
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
-
-        print("解嵌入")
-        img_tensor = x[0]
-        if img_tensor.size(0) >= 3:
-            img_tensor = img_tensor[:3]  # 取前 3 个通道
-        else:
-            img_tensor = img_tensor.mean(dim=0, keepdim=True).expand(3, -1, -1)  # 取平均值并扩展到 3 个通道
-        # 归一化到 [0, 1]，便于转换为图像格式
-        img_tensor = (img_tensor - img_tensor.min()) / (img_tensor.max() - img_tensor.min())
-        # 将 tensor 转换为 PIL 图像
-        img = transforms.ToPILImage()(img_tensor.cpu())
-        # 保存图像
-        img.save("5-x_final.png")
-        sys.exit()
         return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale):
