@@ -163,7 +163,7 @@ class GaussianDiffusion:
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
         self.loss_type = loss_type
-        self.p_sample_count = 0
+        self.is_initial_sample = True
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
@@ -275,18 +275,19 @@ class GaussianDiffusion:
         """
         if model_kwargs is None:
             model_kwargs = {}
-        model_kwargs["p_sample_count"] = self.p_sample_count
+        model_kwargs["is_initial_sample"] = self.is_initial_sample
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
         model_output = model(x, t, **model_kwargs)
-        self.p_sample_count += 1
+        self.is_initial_sample = False
         if isinstance(model_output, tuple):
             model_output, extra = model_output
         else:
             extra = None
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
+            raise NotImplementedError("暂未实现")
             assert model_output.shape == (B, C * 2, *x.shape[2:])
             model_output, model_var_values = th.split(model_output, C, dim=1)
             min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
@@ -297,7 +298,7 @@ class GaussianDiffusion:
             model_variance = th.exp(model_log_variance)
         else:
             model_variance, model_log_variance = {
-                # for fixedlarge, we set the initial (log-)variance like so
+                # for fixed large, we set the initial (log-)variance like so
                 # to get a better decoder log likelihood.
                 ModelVarType.FIXED_LARGE: (
                     np.append(self.posterior_variance[1], self.betas[1:]),
@@ -318,10 +319,10 @@ class GaussianDiffusion:
                 return x.clamp(-1, 1)
             return x
 
-        if self.model_mean_type == ModelMeanType.START_X:
+        if self.model_mean_type == ModelMeanType.START_X:  # 预测 x_0 的情况
             pred_xstart = process_xstart(model_output)
         else:
-            pred_xstart = process_xstart(
+            pred_xstart = process_xstart(  # 预测噪声的情况
                 self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
             )
         model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
@@ -386,6 +387,7 @@ class GaussianDiffusion:
         denoised_fn=None,
         cond_fn=None,
         model_kwargs=None,
+        var_noise=None,
     ):
         """
         Sample x_{t-1} from the model at the given timestep.
@@ -410,6 +412,7 @@ class GaussianDiffusion:
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
+            var_noise=var_noise,
         )
         noise = th.randn_like(x)
         nonzero_mask = (
@@ -417,8 +420,9 @@ class GaussianDiffusion:
         )  # no noise when t == 0
         if cond_fn is not None:
             out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
-        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"]}
+        sample = out["mean"]
+        var_noise = nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        return {"sample": sample, "pred_xstart": out["pred_xstart"], "var_noise": var_noise}
 
     def p_sample_loop(
         self,
@@ -510,9 +514,11 @@ class GaussianDiffusion:
                     denoised_fn=denoised_fn,
                     cond_fn=cond_fn,
                     model_kwargs=model_kwargs,
+                    var_noise=var_noise,
                 )
                 yield out
                 img = out["sample"]
+                var_noise = out["var_noise"]
 
     def ddim_sample(
         self,

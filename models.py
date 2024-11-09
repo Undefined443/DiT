@@ -243,7 +243,7 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, q_sample=None, noise=None, p_sample_count=None):
+    def forward(self, x, t, y, q_sample=None, noise=None, is_initial_sample=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -265,13 +265,14 @@ class DiT(nn.Module):
             N, T, D = x.shape
             sqrt_T = int(math.sqrt(T))
             x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
+            assert noise is not None, "不期望传入 noise 参数"
             if noise is None:
                 noise = torch.randn_like(x)
             x = q_sample(x_start=x, noise=noise)  # 加噪
             x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
         # 采样第一步，生成随机噪声作为 x
-        if p_sample_count == 0:  # 只有采样第一步 p_sample_count 为 0
+        if is_initial_sample:  # 采样第一步，使用随机噪声作为 x
             x = torch.randn_like(x)
 
         # 第二部分 Transformer 处理
@@ -290,7 +291,7 @@ class DiT(nn.Module):
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y, p_sample_count=p_sample_count)
+        model_out = self.forward(combined, t, y, is_initial_sample=p_sample_count)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
