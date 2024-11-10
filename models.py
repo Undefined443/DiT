@@ -260,17 +260,13 @@ class DiT(nn.Module):
 
         # 训练时在中间添加噪声
         if q_sample is not None:  # 只有训练过程会传入 q_sample 函数
-            N, T, D = x.shape
-            sqrt_T = int(math.sqrt(T))
-            x = x.reshape(N, sqrt_T, sqrt_T, D).permute(0, 3, 1, 2)  # 转回图像格式 (N, D, sqrt_T, sqrt_T)
-            assert noise is not None, "不期望传入 noise 参数"
+            assert noise is None, "不期望传入 noise 参数"
             if noise is None:
                 noise = torch.randn_like(x)
             x = q_sample(x_start=x, noise=noise)  # 加噪
-            x = x.permute(0, 2, 3, 1).reshape(N, T, D)  # 转回序列格式
 
         # 采样第一步，生成随机噪声作为 x
-        if is_initial_sample:  # 采样第一步，使用随机噪声作为 x
+        if is_initial_sample:
             x = torch.randn_like(x)
 
         # 第二部分 Transformer 处理
