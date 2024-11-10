@@ -387,7 +387,6 @@ class GaussianDiffusion:
         denoised_fn=None,
         cond_fn=None,
         model_kwargs=None,
-        var_noise=None,
     ):
         """
         Sample x_{t-1} from the model at the given timestep.
@@ -411,8 +410,7 @@ class GaussianDiffusion:
             t,
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
-            model_kwargs=model_kwargs,
-            var_noise=var_noise,
+            model_kwargs=model_kwargs
         )
         noise = th.randn_like(x)
         nonzero_mask = (
@@ -420,9 +418,8 @@ class GaussianDiffusion:
         )  # no noise when t == 0
         if cond_fn is not None:
             out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
-        sample = out["mean"]
-        var_noise = nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"], "var_noise": var_noise}
+        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(
         self,
@@ -513,12 +510,10 @@ class GaussianDiffusion:
                     clip_denoised=clip_denoised,
                     denoised_fn=denoised_fn,
                     cond_fn=cond_fn,
-                    model_kwargs=model_kwargs,
-                    var_noise=var_noise,
+                    model_kwargs=model_kwargs
                 )
                 yield out
                 img = out["sample"]
-                var_noise = out["var_noise"]
 
     def ddim_sample(
         self,
