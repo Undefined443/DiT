@@ -465,7 +465,7 @@ class GaussianDiffusion:
             progress=progress,
         ):
             final = sample
-        return final["sample"]
+        return final["_sample"]
 
     def p_sample_loop_progressive(
         self,
