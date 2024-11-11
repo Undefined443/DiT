@@ -270,6 +270,7 @@ class DiT(nn.Module):
             x = torch.randn_like(x)
         elif is_initial_sample is False:
             print("正在执行 sample 加噪")
+            noise = self.x_embedder(noise) + self.pos_embed
             for block in self.blocks_first:
                 noise = block(noise, c)
             x = x + noise
