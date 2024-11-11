@@ -269,7 +269,7 @@ class DiT(nn.Module):
         if is_initial_sample is True:
             x = torch.randn_like(x)
         elif is_initial_sample is False:
-            print("正在执行 forward 中的第二部分 Transformer 处理...")
+            print("正在执行 sample 加噪")
             for block in self.blocks_first:
                 noise = block(noise, c)
             x = x + noise
