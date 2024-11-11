@@ -266,8 +266,11 @@ class DiT(nn.Module):
             x = q_sample(x_start=x, noise=noise)  # 加噪
 
         # 采样第一步，生成随机噪声作为 x
-        if is_initial_sample:
+        if is_initial_sample is True:
             x = torch.randn_like(x)
+        elif is_initial_sample is False:
+            x = x + noise
+            print("正在执行 forward 中的第二部分 Transformer 处理...")
 
         # 第二部分 Transformer 处理
         c = t + y
@@ -278,14 +281,14 @@ class DiT(nn.Module):
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, x, t, y, cfg_scale, is_initial_sample=None):
+    def forward_with_cfg(self, x, t, y, cfg_scale, is_initial_sample=None, noise=None):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y, is_initial_sample=is_initial_sample)
+        model_out = self.forward(combined, t, y, is_initial_sample=is_initial_sample, noise=noise)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.

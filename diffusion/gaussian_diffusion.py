@@ -319,13 +319,13 @@ class GaussianDiffusion:
                 return x.clamp(-1, 1)
             return x
 
-        if self.model_mean_type == ModelMeanType.START_X:  # 预测 x_0 的情况
-            pred_xstart = process_xstart(model_output)
+        if self.model_mean_type == ModelMeanType.START_X:  # 预测 x_start 的情况
+            pred_xstart = process_xstart(model_output)     # model_output 就是模型预测的 x_start
         else:
-            pred_xstart = process_xstart(  # 预测噪声的情况
-                self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
+            pred_xstart = process_xstart(                                    # 预测噪声的情况
+                self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)  # 根据 x_t 和 t 以及模型预测的噪声 eps 来预测 x_start
             )
-        model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
+        model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)  # 根据预测的 x_start 以及 x_t 和 t 来计算 q 分布的均值和方差
 
         assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
         return {
@@ -386,7 +386,7 @@ class GaussianDiffusion:
         clip_denoised=True,
         denoised_fn=None,
         cond_fn=None,
-        model_kwargs=None,
+        model_kwargs=None
     ):
         """
         Sample x_{t-1} from the model at the given timestep.
@@ -418,8 +418,9 @@ class GaussianDiffusion:
         )  # no noise when t == 0
         if cond_fn is not None:
             out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
-        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"]}
+        _sample = out["mean"]
+        _noise = nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        return {"_sample": _sample, "_noise": _noise, "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(
         self,
@@ -505,7 +506,7 @@ class GaussianDiffusion:
             with th.no_grad():
                 out = self.p_sample(
                     model,
-                    img,
+                    _img,
                     t,
                     clip_denoised=clip_denoised,
                     denoised_fn=denoised_fn,
@@ -513,7 +514,8 @@ class GaussianDiffusion:
                     model_kwargs=model_kwargs
                 )
                 yield out
-                img = out["sample"]
+                _img = out["_sample"]
+                model_kwargs["noise"] = out["_noise"]
 
     def ddim_sample(
         self,
