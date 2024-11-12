@@ -157,7 +157,7 @@ class DiT(nn.Module):
         mlp_ratio=4.0,
         class_dropout_prob=0.1,
         num_classes=1000,
-        learn_sigma=True,
+        learn_sigma=False,
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -173,8 +173,12 @@ class DiT(nn.Module):
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        self.blocks = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
+        split_point = depth // 2
+        self.blocks_first = nn.ModuleList([
+            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
+        ])
+        self.blocks_second = nn.ModuleList([
+            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(depth - split_point)
         ])
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
@@ -205,9 +209,12 @@ class DiT(nn.Module):
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
         # Zero-out adaLN modulation layers in DiT blocks:
-        for block in self.blocks:
-            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
-            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        for block_first in self.blocks_first:
+            nn.init.constant_(block_first.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block_first.adaLN_modulation[-1].bias, 0)
+        for block_second in self.blocks_second:
+            nn.init.constant_(block_second.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block_second.adaLN_modulation[-1].bias, 0)
 
         # Zero-out output layers:
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
@@ -230,19 +237,35 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y):
+    def forward(self, x, t, y, q_sample=None, noise=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+
+        # sigma = 5  # 噪声的标准差
+        # noise = torch.randn_like(x) * sigma
+        # x = x + noise
+
+        if q_sample is not None:
+            if noise is None:
+                noise = torch.randn_like(x)
+            x = q_sample(x_start=x, noise=noise)  # 加噪
+
+
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
-        for block in self.blocks:
-            x = block(x, c)                      # (N, T, D)
+        
+        for block in self.blocks_first:
+            x = block(x, c)                    # (N, T, D)
+
+        for block in self.blocks_second:
+            x = block(x, c)
+
         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x

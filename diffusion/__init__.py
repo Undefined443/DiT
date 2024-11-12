@@ -12,8 +12,8 @@ def create_diffusion(
     noise_schedule="linear", 
     use_kl=False,
     sigma_small=False,
-    predict_xstart=False,
-    learn_sigma=True,
+    predict_xstart=True,
+    learn_sigma=False,
     rescale_learned_sigmas=False,
     diffusion_steps=1000
 ):

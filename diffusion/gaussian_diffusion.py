@@ -5,6 +5,7 @@
 
 
 import math
+from functools import partial
 
 import numpy as np
 import torch as th
@@ -728,7 +729,8 @@ class GaussianDiffusion:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
-        x_t = self.q_sample(x_start, t, noise=noise)
+        # x_t = self.q_sample(x_start, t, noise=noise)
+        x_t = x_start
 
         terms = {}
 
@@ -744,6 +746,7 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
+            model_kwargs["q_sample"] = partial(self.q_sample, t=t)
             model_output = model(x_t, t, **model_kwargs)
 
             if self.model_var_type in [
