@@ -178,10 +178,10 @@ class DiT(nn.Module):
         # 修改：将 Transformer 块分成两部分
         split_point = depth // 2
         self.blocks_first = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
+            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(split_point)
         ])
         self.blocks_second = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(depth - split_point)
+            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth - split_point)
         ])
 
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
@@ -252,7 +252,7 @@ class DiT(nn.Module):
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
-        c = y                                # (N, D)
+        c = y                                    # (N, D)
 
         # 第一部分 Transformer 处理
         for block in self.blocks_first:
