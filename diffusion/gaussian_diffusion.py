@@ -727,7 +727,7 @@ class GaussianDiffusion:
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
-            noise = th.randn_like(x_start)
+            noise = th.zeros_like(x_start)
         x_t = self.q_sample(x_start, t, noise=noise)
 
         terms = {}
