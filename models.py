@@ -175,10 +175,10 @@ class DiT(nn.Module):
 
         split_point = depth // 2
         self.blocks_first = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
+            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(split_point)
         ])
         self.blocks_second = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(depth - split_point)
+            DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth - split_point)
         ])
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
@@ -237,7 +237,7 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, q_sample=None, noise=None):
+    def forward(self, x, t, y, noise=None, x_noised=None, q_sample=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -249,24 +249,23 @@ class DiT(nn.Module):
         # noise = torch.randn_like(x) * sigma
         # x = x + noise
 
-        if q_sample is not None:
-            if noise is None:
-                noise = torch.randn_like(x)
-            x = q_sample(x_start=x, noise=noise)  # 加噪
-
+        if x_noised is not None:
+            x = x_noised
+            q_sample = q_sample(x)
+            assert torch.allclose(q_sample, x_noised, rtol=1e-5), "q_sample 结果和 x_noised 不相同"
 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
-        
+
         for block in self.blocks_first:
-            x = block(x, c)                    # (N, T, D)
+            x = block(x, c)                      # (N, T, D)
 
         for block in self.blocks_second:
             x = block(x, c)
 
-        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 

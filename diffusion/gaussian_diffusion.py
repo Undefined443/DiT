@@ -729,12 +729,13 @@ class GaussianDiffusion:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
-        # x_t = self.q_sample(x_start, t, noise=noise)
-        x_t = x_start
+        _x_t = x_start
+        x_noised = self.q_sample(x_start, t, noise=noise)
 
         terms = {}
 
         if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
+            raise NotImplementedError("别进这里")
             terms["loss"] = self._vb_terms_bpd(
                 model=model,
                 x_start=x_start,
@@ -746,13 +747,15 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
+            model_kwargs["x_noised"] = x_noised
             model_kwargs["q_sample"] = partial(self.q_sample, t=t)
-            model_output = model(x_t, t, **model_kwargs)
+            model_output = model(_x_t, t, **model_kwargs)
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
             ]:
+                raise NotImplementedError("别进这里")
                 B, C = x_t.shape[:2]
                 assert model_output.shape == (B, C * 2, *x_t.shape[2:])
                 model_output, model_var_values = th.split(model_output, C, dim=1)
@@ -772,9 +775,9 @@ class GaussianDiffusion:
                     terms["vb"] *= self.num_timesteps / 1000.0
 
             target = {
-                ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(
-                    x_start=x_start, x_t=x_t, t=t
-                )[0],
+                # ModelMeanType.PREVIOUS_X: self.q_posterior_mean_variance(
+                #     x_start=x_start, x_t=_x_t, t=t
+                # )[0],  # 不该有这个
                 ModelMeanType.START_X: x_start,
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
