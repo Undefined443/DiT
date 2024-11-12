@@ -237,7 +237,7 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, noise=None, x_noised=None, q_sample=None):
+    def forward(self, x, t, y, noise=None, _x_start=None, _x_t=None, _q_sample=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -249,10 +249,9 @@ class DiT(nn.Module):
         # noise = torch.randn_like(x) * sigma
         # x = x + noise
 
-        if x_noised is not None:
-            q_sample = q_sample(x)
-            assert torch.allclose(q_sample, x_noised, rtol=1e-5), "q_sample 结果和 x_noised 不相同"
-            x = x_noised
+        if _x_t is not None:
+            _x_t_prime = _q_sample(x)
+            assert torch.allclose(_x_t, _x_t_prime, rtol=1e-5), "_x_t 和 _x_t_prime 不相同"
 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
