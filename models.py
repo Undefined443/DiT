@@ -252,6 +252,8 @@ class DiT(nn.Module):
         if x_noised is not None:
             x = x_noised
             q_sample = q_sample(x)
+            print("x_noised:", x_noised.shape, x_noised.mean().item(), x_noised.std().item())
+            print("q_sample:", q_sample.shape, q_sample.mean().item(), q_sample.std().item())
             assert torch.allclose(q_sample, x_noised, rtol=1e-5), "q_sample 结果和 x_noised 不相同"
 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
