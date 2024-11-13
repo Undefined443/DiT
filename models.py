@@ -173,7 +173,7 @@ class DiT(nn.Module):
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        split_point = 0
+        split_point = depth // 2
         self.blocks_first = nn.ModuleList([
             DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(split_point)
         ])
