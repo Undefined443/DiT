@@ -746,8 +746,8 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_kwargs["_x_start"] = x_start
-            model_kwargs["_x_t"] = x_t
+            model_kwargs["_x_start"] = x_start.clone()
+            model_kwargs["_x_t"] = x_t.clone()
             model_kwargs["_q_sample"] = partial(self.q_sample, t=t, noise=noise)
             model_output = model(x_t, t, **model_kwargs)
 

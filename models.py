@@ -253,20 +253,20 @@ class DiT(nn.Module):
             _x_t_prime = _q_sample(_x_start)
             assert torch.allclose(_x_t, _x_t_prime, rtol=1e-5), "_x_t 和 _x_t_prime 不相同"
 
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        _x_t_prime = self.x_embedder(_x_t_prime) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
 
         for block in self.blocks_first:
-            x = block(x, c)                      # (N, T, D)
+            _x_t_prime = block(_x_t_prime, c)                      # (N, T, D)
 
         for block in self.blocks_second:
-            x = block(x, c)
+            _x_t_prime = block(_x_t_prime, c)
 
-        x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)                   # (N, out_channels, H, W)
-        return x
+        _x_t_prime = self.final_layer(_x_t_prime, c)               # (N, T, patch_size ** 2 * out_channels)
+        _x_t_prime = self.unpatchify(_x_t_prime)                   # (N, out_channels, H, W)
+        return _x_t_prime
 
     def forward_with_cfg(self, x, t, y, cfg_scale):
         """
