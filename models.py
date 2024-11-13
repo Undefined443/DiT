@@ -237,37 +237,29 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, _x_start=None, _x_t=None, _q_sample=None):
+    def forward(self, _x_start, t, y, _q_sample=None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+        _x_t = _q_sample(_x_start)
 
-        # sigma = 5  # 噪声的标准差
-        # noise = torch.randn_like(x) * sigma
-        # x = x + noise
-
-        if _x_t is not None:
-            _x_t_prime = _q_sample(_x_start)
-            assert torch.allclose(_x_t, x, rtol=1e-5), "_x_t 和 _x_t_prime 不相同"
-            x = _x_t_prime
-
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        _x_t = self.x_embedder(_x_t) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
 
         for block in self.blocks_first:
-            x = block(x, c)                      # (N, T, D)
+            _x_t = block(_x_t, c)                      # (N, T, D)
 
         for block in self.blocks_second:
-            x = block(x, c)
+            _x_t = block(_x_t, c)
 
-        x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)                   # (N, out_channels, H, W)
-        return x
+        _x_t = self.final_layer(_x_t, c)               # (N, T, patch_size ** 2 * out_channels)
+        _x_t = self.unpatchify(_x_t)                   # (N, out_channels, H, W)
+        return _x_t
 
     def forward_with_cfg(self, x, t, y, cfg_scale):
         """
