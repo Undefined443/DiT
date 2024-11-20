@@ -15,6 +15,22 @@ import numpy as np
 import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 
+import torch.nn.functional as F
+
+def _extract_into_tensor(arr, timesteps, broadcast_shape):
+    """
+    Extract values from a 1-D numpy array for a batch of indices.
+    :param arr: the 1-D numpy array.
+    :param timesteps: a tensor of indices into the array to extract.
+    :param broadcast_shape: a larger shape of K dimensions with the batch
+                            dimension equal to the length of timesteps.
+    :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
+    """
+    res = torch.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
+    while len(res.shape) < len(broadcast_shape):
+        res = res[..., None]
+    return res + torch.zeros(broadcast_shape, device=timesteps.device)
+
 
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
@@ -142,6 +158,197 @@ class FinalLayer(nn.Module):
         return x
 
 
+class ResNetMLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(ResNetMLP, self).__init__()
+
+        # 定义全连接层
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+
+        # 激活函数
+        self.relu = nn.ReLU()
+
+        # 如果需要的话，可以加上一个 Dropout 层进行正则化
+        self.dropout = nn.Dropout(p=0.5)
+
+        # 定义 Batch Normalization 层
+        self.batch_norm = nn.BatchNorm1d(output_dim)
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        # 使用 Xavier 初始化（均匀分布）初始化权重
+        nn.init.xavier_uniform_(self.fc1.weight)  # fc1 权重初始化
+        nn.init.xavier_uniform_(self.fc2.weight)  # fc2 权重初始化
+
+        # 将偏置项初始化为零
+        nn.init.zeros_(self.fc1.bias)
+        nn.init.zeros_(self.fc2.bias)
+
+    def forward(self, x):
+        # 保存原始输入用于残差连接
+        residual = x
+
+        # 第一个全连接层和激活
+        x = self.fc1(x)
+        x = self.relu(x)
+
+        # Dropout
+        x = self.dropout(x)
+
+        # 第二个全连接层
+        x = self.fc2(x)
+
+        x = self.batch_norm(x.permute(0, 2, 1)).permute(0, 2, 1)  # 由于输入是 (N, T, D)，需要调整维度以匹配 BatchNorm1d 的输入格式
+
+        # 添加残差连接
+        x += residual
+
+        # Batch Normalization
+        # x = self.batch_norm(x.permute(0, 2, 1)).permute(0, 2, 1)  # 由于输入是 (N, T, D)，需要调整维度以匹配 BatchNorm1d 的输入格式
+
+        return x
+
+
+
+class DiTBlock11(nn.Module):
+    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        mlp_hidden_dim = int(hidden_size * mlp_ratio)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        
+        # 去掉 adaLN_modulation 层
+        # self.adaLN_modulation = nn.Sequential(
+        #     nn.SiLU(),
+        #     nn.Linear(hidden_size, 6 * hidden_size, bias=True)
+        # )
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        # Initialize norm layers (LayerNorm doesn't have learnable parameters)
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                if 'attn' in name or 'mlp' in name:
+                    nn.init.xavier_uniform_(param)  # Xavier initialization for attention and MLP weights
+                else:
+                    nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')  # He initialization for others
+            elif 'bias' in name:
+                nn.init.zeros_(param)  # Initialize biases to zero
+
+    def forward(self, x):
+        # 删除对 `c` 的引用，不再进行调制
+        x = x + self.attn(self.norm1(x))  # 不再调制
+        x = x + self.mlp(self.norm2(x))  # 不再调制
+        return x
+
+
+class UNetFeatureExtractor(nn.Module): 
+    def __init__(self, in_channels, out_channels):
+        super(UNetFeatureExtractor, self).__init__()
+        self.encoder1 = self.conv_block(in_channels, 64)
+        self.encoder2 = self.conv_block(64, 128)
+        self.encoder3 = self.conv_block(128, 256)
+        self.encoder4 = self.conv_block(256, 512)
+
+        self.pool = nn.MaxPool2d(2)
+        
+        self.middle = self.conv_block(512, 1024)
+
+        self.up4 = self.up_conv(1024, 512)
+        self.decoder4 = self.conv_block(1024, 512)
+        self.up3 = self.up_conv(512, 256)
+        self.decoder3 = self.conv_block(512, 256)
+        self.up2 = self.up_conv(256, 128)
+        self.decoder2 = self.conv_block(256, 128)
+        self.up1 = self.up_conv(128, 64)
+        self.decoder1 = self.conv_block(128, 64)
+
+        self.batch_norm = nn.BatchNorm2d(out_channels)
+        self.final = nn.Conv2d(64, out_channels, kernel_size=1)
+
+        # 在初始化网络时调用初始化函数
+        self._initialize_weights()
+
+        # 冻结 BatchNorm 的缩放因子和偏移量
+        self.freeze_batchnorm()
+
+    def conv_block(self, in_channels, out_channels):
+        block = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        return block
+    
+    def up_conv(self, in_channels, out_channels):
+        return nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+
+    def forward(self, x):
+        # Encoder
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(self.pool(enc1))
+        enc3 = self.encoder3(self.pool(enc2))
+        enc4 = self.encoder4(self.pool(enc3))
+        
+        # Middle
+        mid = self.middle(self.pool(enc4))
+        
+        # Decoder
+        dec4 = self.up4(mid)
+        dec4 = torch.cat((dec4, enc4), dim=1)
+        dec4 = self.decoder4(dec4)
+        dec3 = self.up3(dec4)
+        dec3 = torch.cat((dec3, enc3), dim=1)
+        dec3 = self.decoder3(dec3)
+        dec2 = self.up2(dec3)
+        dec2 = torch.cat((dec2, enc2), dim=1)
+        dec2 = self.decoder2(dec2)
+        dec1 = self.up1(dec2)
+        dec1 = torch.cat((dec1, enc1), dim=1)
+        dec1 = self.decoder1(dec1)
+
+        # 最终输出
+        final = self.final(dec1)
+        
+        # 应用 BatchNorm2d
+        final = self.batch_norm(final)
+        return final
+
+    def _initialize_weights(self):
+        # 对所有卷积层使用 Kaiming 初始化
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.ConvTranspose2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def freeze_batchnorm(self):
+        # 将 BatchNorm2d 的缩放因子和偏移量冻结
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                # 设置 gamma (weight) 为 1，beta (bias) 为 0
+                m.weight.data.fill_(1)
+                m.bias.data.fill_(0)
+                # 冻结这两个参数的梯度
+                m.weight.requires_grad = False
+                m.bias.requires_grad = False
+
+
+
 class DiT(nn.Module):
     """
     Diffusion model with a Transformer backbone.
@@ -173,7 +380,13 @@ class DiT(nn.Module):
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        split_point = depth // 2
+        split_point = depth // 6
+        # self.blocks_first = nn.ModuleList([
+        #     UNetFeatureExtractor(4, 4) for _ in range(split_point)
+        # ])
+        # self.blocks_first = nn.ModuleList([
+        #     ResNetMLP(input_dim=384, hidden_dim=512, output_dim=384) for _ in range(split_point)
+        # ])
         self.blocks_first = nn.ModuleList([
             DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
         ])
@@ -237,7 +450,10 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, q_sample=None, noise=None):
+    def forward(self, x, t, y, q_sample=None, noise=None,
+        p_sample_count=0,
+        t_ori = None,
+        p_sam_var = None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -253,15 +469,37 @@ class DiT(nn.Module):
             if noise is None:
                 noise = torch.randn_like(x)
             x = q_sample(x_start=x, noise=noise)  # 加噪
+        # elif p_sample_count == 0:
+        #     x = torch.randn(*x.shape, device=x.device)
+        elif p_sample_count != 0:
+            p_sam_mask = (
+                (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+            )  # no noise when t == 0
+            x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
 
 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        # x = self.x_embedder(x)
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
-        c = t + y                                # (N, D)
+        c = t + y                               # (N, D)
+            
+        # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
         
-        for block in self.blocks_first:
-            x = block(x, c)                    # (N, T, D)
+        # print("Before:")
+        # print(x.shape)
+        if q_sample is not None or p_sample_count != 0:
+            for block in self.blocks_first:
+                x = block(x, c)                    # (N, T, D)
+
+        # print("After:")
+        # print(torch.mean(x))
+        # print(torch.var(x))
+        # for block in self.blocks_first:
+        #     x = block(x)         
+
+        # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2         
+
 
         for block in self.blocks_second:
             x = block(x, c)
@@ -270,14 +508,17 @@ class DiT(nn.Module):
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
-    def forward_with_cfg(self, x, t, y, cfg_scale):
+    def forward_with_cfg(self, x, t, y, cfg_scale,
+        p_sample_count=0,
+        t_ori=None,
+        p_sam_var=None):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y)
+        model_out = self.forward(combined, t, y, p_sample_count=p_sample_count, t_ori=t_ori, p_sam_var=p_sam_var)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
