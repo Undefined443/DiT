@@ -276,6 +276,15 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
+
+        if model_kwargs.get("log_variance") is not None:
+            print("I'm adding some noise.")
+            noise = th.randn_like(x)
+            nonzero_mask = (
+                (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+            )  # no noise when t == 0
+            x = x + nonzero_mask * th.exp(0.5 * model_kwargs["log_variance"]) * noise
+
         model_output = model(x, t, **model_kwargs)
         if isinstance(model_output, tuple):
             model_output, extra = model_output
@@ -407,14 +416,8 @@ class GaussianDiffusion:
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
         )
-        noise = th.randn_like(x)
-        nonzero_mask = (
-            (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
-        )  # no noise when t == 0
-        if cond_fn is not None:
-            out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
-        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"]}
+        sample = out["mean"]
+        return {"sample": sample, "pred_xstart": out["pred_xstart"], "log_variance": out["log_variance"]}
 
     def p_sample_loop(
         self,
@@ -509,6 +512,7 @@ class GaussianDiffusion:
                 )
                 yield out
                 img = out["sample"]
+                model_kwargs["log_variance"] = out["log_variance"]
 
     def ddim_sample(
         self,
