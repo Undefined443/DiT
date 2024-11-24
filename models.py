@@ -238,6 +238,9 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         if log_variance is not None:
+            with open('in_x0.log', 'a') as file:
+                mean_value = torch.mean(x)
+                file.write(f"{mean_value.item()}\n")
             noise = torch.randn_like(x)
             with open('in_noise.log', 'a') as file:
                 mean_value = torch.mean(noise)
