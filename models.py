@@ -250,7 +250,7 @@ class DiT(nn.Module):
             )  # no noise when t == 0
             x = x + nonzero_mask * torch.exp(0.5 * log_variance) * noise
 
-        with open('in.log', 'a') as file:
+        with open('in_xt.log', 'a') as file:
             mean_value = torch.mean(x)
             file.write(f"{mean_value.item()}\n")
 
