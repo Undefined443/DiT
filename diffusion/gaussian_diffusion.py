@@ -279,6 +279,9 @@ class GaussianDiffusion:
 
         if model_kwargs.get('log_variance') is not None:
             noise = th.randn_like(x)
+            with open('out_noise.log', 'a') as file:
+                mean_value = th.mean(noise)
+                file.write(f"{mean_value.item()}\n")
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
