@@ -239,6 +239,9 @@ class DiT(nn.Module):
         """
         if log_variance is not None:
             noise = torch.randn_like(x)
+            with open('in_noise.log', 'a') as file:
+                mean_value = torch.mean(noise)
+                file.write(f"{mean_value.item()}\n")
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
