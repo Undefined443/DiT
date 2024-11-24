@@ -238,12 +238,15 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         if log_variance is not None:
-            print("I'm adding some noise.")
             noise = torch.randn_like(x)
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
             x = x + nonzero_mask * torch.exp(0.5 * log_variance) * noise
+
+        with open('x.log', 'a') as file:
+            mean_value = torch.mean(x)
+            file.write(f"{mean_value.item()}\n")
 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
