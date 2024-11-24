@@ -278,7 +278,6 @@ class GaussianDiffusion:
         assert t.shape == (B,)
 
         if model_kwargs.get("log_variance") is not None:
-            print("I'm adding some noise.")
             noise = th.randn_like(x)
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
