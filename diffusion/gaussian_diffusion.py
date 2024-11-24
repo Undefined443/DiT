@@ -278,6 +278,9 @@ class GaussianDiffusion:
         assert t.shape == (B,)
 
         if model_kwargs.get('log_variance') is not None:
+            with open('out_x0.log', 'a') as file:
+                mean_value = th.mean(x)
+                file.write(f"{mean_value.item()}\n")
             noise = th.randn_like(x)
             with open('out_noise.log', 'a') as file:
                 mean_value = th.mean(noise)

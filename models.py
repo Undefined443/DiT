@@ -237,7 +237,7 @@ class DiT(nn.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        with open('out.log', 'a') as file:
+        with open('out_xt.log', 'a') as file:
             mean_value = torch.mean(x)
             file.write(f"{mean_value.item()}\n")
 
