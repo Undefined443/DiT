@@ -277,12 +277,13 @@ class GaussianDiffusion:
         B, C = x.shape[:2]
         assert t.shape == (B,)
 
-        if model_kwargs.get("log_variance") is not None:
+        if model_kwargs.get('log_variance') is not None:
             noise = th.randn_like(x)
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
-            x = x + nonzero_mask * th.exp(0.5 * model_kwargs["log_variance"]) * noise
+            x = x + nonzero_mask * th.exp(0.5 * model_kwargs['log_variance']) * noise
+            del model_kwargs['log_variance']
 
         model_output = model(x, t, **model_kwargs)
         if isinstance(model_output, tuple):
