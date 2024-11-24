@@ -230,30 +230,13 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, log_variance=None):
+    def forward(self, x, t, y):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-        if log_variance is not None:
-            with open('in_x0.log', 'a') as file:
-                mean_value = torch.mean(x)
-                file.write(f"{mean_value.item()}\n")
-            noise = torch.randn_like(x)
-            with open('in_noise.log', 'a') as file:
-                mean_value = torch.mean(noise)
-                file.write(f"{mean_value.item()}\n")
-            nonzero_mask = (
-                (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
-            )  # no noise when t == 0
-            x = x + nonzero_mask * torch.exp(0.5 * log_variance) * noise
-
-        with open('in_xt.log', 'a') as file:
-            mean_value = torch.mean(x)
-            file.write(f"{mean_value.item()}\n")
-
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
@@ -269,9 +252,26 @@ class DiT(nn.Module):
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
+        if log_variance is not None:
+            with open('in_x0.log', 'a') as file:
+                mean_value = torch.mean(x)
+                file.write(f"{mean_value.item()}\n")  # 打印未加噪的 x 的均值
+            noise = torch.randn_like(x)
+            with open('in_noise.log', 'a') as file:
+                mean_value = torch.mean(noise)
+                file.write(f"{mean_value.item()}\n")  # 打印 noise 的均值
+            nonzero_mask = (
+                (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+            )  # no noise when t == 0
+            x = x + nonzero_mask * torch.exp(0.5 * log_variance) * noise
+
+        with open('in_xt.log', 'a') as file:
+            mean_value = torch.mean(x)
+            file.write(f"{mean_value.item()}\n")     # 打印加噪后的 x 的均值
+
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y, log_variance)
+        model_out = self.forward(combined, t, y)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
