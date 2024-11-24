@@ -280,15 +280,15 @@ class GaussianDiffusion:
         if model_kwargs.get('log_variance') is not None:
             with open('out_x0.log', 'a') as file:
                 mean_value = th.mean(x)
-                file.write(f"{mean_value.item()}\n")
+                file.write(f"{mean_value.item()}\n")  # 打印未加噪的 x 的均值
             noise = th.randn_like(x)
             with open('out_noise.log', 'a') as file:
                 mean_value = th.mean(noise)
-                file.write(f"{mean_value.item()}\n")
+                file.write(f"{mean_value.item()}\n")  # 打印 noise 的均值
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
-            x = x + nonzero_mask * th.exp(0.5 * model_kwargs['log_variance']) * noise
+            x = x + nonzero_mask * th.exp(0.5 * model_kwargs['log_variance']) * noise  # 加噪
             del model_kwargs['log_variance']
 
         model_output = model(x, t, **model_kwargs)
