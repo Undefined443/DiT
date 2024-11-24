@@ -247,7 +247,7 @@ class DiT(nn.Module):
         c = t + y                                # (N, D)
         for block in self.blocks:
             x = block(x, c)                      # (N, T, D)
-        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
