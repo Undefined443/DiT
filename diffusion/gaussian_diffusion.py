@@ -282,7 +282,8 @@ class GaussianDiffusion:
                 mean_value = th.mean(x)
                 file.write(f"{mean_value.item()}\n")  # 打印未加噪的 x 的均值
             with open('out_log_variance.log', 'a') as file:
-                file.write(f"{model_kwargs['log_variance'].item()}\n")  # 打印 log_variance
+                mean_value = th.mean(model_kwargs['log_variance'])
+                file.write(f"{mean_value.item()}\n")  # 打印 log_variance
             noise = th.randn_like(x)
             with open('out_noise.log', 'a') as file:
                 mean_value = th.mean(noise)
