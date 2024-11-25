@@ -256,6 +256,8 @@ class DiT(nn.Module):
             with open('in_x0.log', 'a') as file:
                 mean_value = torch.mean(x)
                 file.write(f"{mean_value.item()}\n")  # 打印未加噪的 x 的均值
+            with open('in_log_variance.log', 'a') as file:
+                file.write(f"{log_variance.item()}\n")  # 打印 log_variance
             noise = torch.randn_like(x)
             with open('in_noise.log', 'a') as file:
                 mean_value = torch.mean(noise)
