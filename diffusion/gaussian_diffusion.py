@@ -289,6 +289,9 @@ class GaussianDiffusion:
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
             x = x + nonzero_mask * th.exp(0.5 * model_kwargs['log_variance']) * noise  # 加噪
+            with open('out_xt0.log', 'a') as file:
+                mean_value = th.mean(x)
+                file.write(f"{mean_value.item()}\n")  # 打印输入 model 前的 xt
             del model_kwargs['log_variance']
 
         model_output = model(x, t, **model_kwargs)
