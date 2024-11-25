@@ -273,7 +273,7 @@ class DiT(nn.Module):
 
         with open('in_model_input.log', 'a') as file:
             mean_value = torch.mean(x)
-            file.write(f"{mean_value.item()}\n")     # 打印加噪后的 x 的均值
+            file.write(f"{mean_value.item()}\n")      # 打印输入模型的输入
 
         x_t = x.clone()
         
