@@ -252,7 +252,7 @@ class DiT(nn.Module):
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
-        with open('in_xt.log', 'a') as file:
+        with open('out_xt.log', 'a') as file:
             mean_value = torch.mean(x)
             file.write(f"{mean_value.item()}\n")     # 打印加噪后的 x 的均值
 
