@@ -276,7 +276,7 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        with open('in_x0_0.log', 'a') as file:
+        with open('in_before_model.log', 'a') as file:
                 mean_value = th.mean(x)
                 file.write(f"{mean_value.item()}\n")  # 打印未加噪的 x 的均值
         model_output, x = model(x, t, **model_kwargs)
