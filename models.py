@@ -264,6 +264,7 @@ class DiT(nn.Module):
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
             x = x + nonzero_mask * torch.exp(0.5 * log_variance) * noise
+            x_t = x.clone()
 
         with open('in_xt.log', 'a') as file:
             mean_value = torch.mean(x)
@@ -280,7 +281,7 @@ class DiT(nn.Module):
         cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
         eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1)
+        return torch.cat([eps, rest], dim=1), x_t
 
 
 #################################################################################
