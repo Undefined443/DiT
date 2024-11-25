@@ -278,7 +278,7 @@ class GaussianDiffusion:
         assert t.shape == (B,)
 
         if model_kwargs.get('log_variance') is not None:
-            with open('out_x0.log', 'a') as file:
+            with open('out_x.log', 'a') as file:
                 mean_value = th.mean(x)
                 file.write(f"{mean_value.item()}\n")  # 打印未加噪的 x 的均值
             with open('out_log_variance.log', 'a') as file:
@@ -292,9 +292,9 @@ class GaussianDiffusion:
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
             x = x + nonzero_mask * th.exp(0.5 * model_kwargs['log_variance']) * noise  # 加噪
-            with open('out_xt0.log', 'a') as file:
+            with open('out_xt.log', 'a') as file:
                 mean_value = th.mean(x)
-                file.write(f"{mean_value.item()}\n")  # 打印输入 model 前的 xt
+                file.write(f"{mean_value.item()}\n")  # 打印加噪得到的 xt
             del model_kwargs['log_variance']
 
         model_output = model(x, t, **model_kwargs)
