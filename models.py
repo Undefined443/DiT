@@ -253,27 +253,11 @@ class DiT(nn.Module):
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         if log_variance is not None:
-            with open('in_x.log', 'a') as file:
-                mean_value = torch.mean(x)
-                file.write(f"{mean_value.item()}\n")  # 打印未加噪的 x 的均值
-            with open('in_log_variance.log', 'a') as file:
-                mean_value = torch.mean(log_variance)
-                file.write(f"{mean_value.item()}\n")  # 打印 log_variance
             noise = torch.randn_like(x)
-            with open('in_noise.log', 'a') as file:
-                mean_value = torch.mean(noise)
-                file.write(f"{mean_value.item()}\n")  # 打印 noise 的均值
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
             )  # no noise when t == 0
-            x = x + nonzero_mask * torch.exp(0.5 * log_variance) * noise  # 加噪
-            with open('in_xt.log', 'a') as file:
-                mean_value = torch.mean(x)
-                file.write(f"{mean_value.item()}\n")  # 打印加噪后的 xt
-
-        with open('in_model_input.log', 'a') as file:
-            mean_value = torch.mean(x)
-            file.write(f"{mean_value.item()}\n")      # 打印输入模型的输入
+            x = x + nonzero_mask * torch.exp(0.5 * log_variance) * noise
 
         x_t = x.clone()
         
