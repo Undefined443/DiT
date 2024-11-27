@@ -279,7 +279,7 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output = model(x, t, **model_kwargs)
+        model_output, x = model(x, t, **model_kwargs)
         self.is_initial_sample = False
         if isinstance(model_output, tuple):
             model_output, extra = model_output
