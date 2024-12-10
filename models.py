@@ -246,6 +246,53 @@ class DiTBlock11(nn.Module):
         x = x + self.attn(self.norm1(x))  # 不再调制
         x = x + self.mlp(self.norm2(x))  # 不再调制
         return x
+    
+
+class DiTBlock12(nn.Module): 
+    def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        mlp_hidden_dim = int(hidden_size * mlp_ratio)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        
+        # Gaussian normalization layers for output
+        self.output_norm = nn.LayerNorm(hidden_size, elementwise_affine=True, eps=1e-6)
+
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                # Check if the weight has more than one dimension
+                if param.ndimension() > 1:  # For matrices (>=2D)
+                    if 'attn' in name or 'mlp' in name:
+                        nn.init.xavier_uniform_(param)  # Xavier initialization for attention and MLP weights
+                    else:
+                        nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')  # He initialization for others
+                else:
+                    # If it's a 1D weight (e.g., bias or certain 1D weights), use a different initialization
+                    nn.init.zeros_(param)  # Zero-initializing 1D weights (or you can use nn.init.normal_ for bias)
+            elif 'bias' in name:
+                nn.init.zeros_(param)  # Initialize biases to zero
+
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        
+        # Apply LayerNorm for output normalization
+        x = self.output_norm(x)
+        
+        # Optionally, you can apply a final transformation to force normality
+        # by subtracting the mean and dividing by the standard deviation
+        mean = x.mean(dim=-1, keepdim=True)
+        std = x.std(dim=-1, keepdim=True)
+        x = (x - mean) / (std + 1e-6)  # Normalize to have zero mean and unit variance
+        
+        return x
+
 
 
 class UNetFeatureExtractor(nn.Module): 
@@ -275,8 +322,6 @@ class UNetFeatureExtractor(nn.Module):
         # 在初始化网络时调用初始化函数
         self._initialize_weights()
 
-        # 冻结 BatchNorm 的缩放因子和偏移量
-        self.freeze_batchnorm()
 
     def conv_block(self, in_channels, out_channels):
         block = nn.Sequential(
@@ -336,18 +381,6 @@ class UNetFeatureExtractor(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def freeze_batchnorm(self):
-        # 将 BatchNorm2d 的缩放因子和偏移量冻结
-        for m in self.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                # 设置 gamma (weight) 为 1，beta (bias) 为 0
-                m.weight.data.fill_(1)
-                m.bias.data.fill_(0)
-                # 冻结这两个参数的梯度
-                m.weight.requires_grad = False
-                m.bias.requires_grad = False
-
-
 
 class DiT(nn.Module):
     """
@@ -364,7 +397,7 @@ class DiT(nn.Module):
         mlp_ratio=4.0,
         class_dropout_prob=0.1,
         num_classes=1000,
-        learn_sigma=False,
+        learn_sigma=True,
     ):
         super().__init__()
         self.learn_sigma = learn_sigma
@@ -381,15 +414,15 @@ class DiT(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
         split_point = depth // 6
-        # self.blocks_first = nn.ModuleList([
-        #     UNetFeatureExtractor(4, 4) for _ in range(split_point)
-        # ])
+        self.blocks_first = nn.ModuleList([
+            UNetFeatureExtractor(4, 4) for _ in range(split_point)
+        ])
         # self.blocks_first = nn.ModuleList([
         #     ResNetMLP(input_dim=384, hidden_dim=512, output_dim=384) for _ in range(split_point)
         # ])
-        self.blocks_first = nn.ModuleList([
-            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
-        ])
+        # self.blocks_first = nn.ModuleList([
+        #     DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
+        # ])
         self.blocks_second = nn.ModuleList([
             DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(depth - split_point)
         ])
@@ -422,9 +455,9 @@ class DiT(nn.Module):
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
         # Zero-out adaLN modulation layers in DiT blocks:
-        for block_first in self.blocks_first:
-            nn.init.constant_(block_first.adaLN_modulation[-1].weight, 0)
-            nn.init.constant_(block_first.adaLN_modulation[-1].bias, 0)
+        # for block_first in self.blocks_first:
+        #     nn.init.constant_(block_first.adaLN_modulation[-1].weight, 0)
+        #     nn.init.constant_(block_first.adaLN_modulation[-1].bias, 0)
         for block_second in self.blocks_second:
             nn.init.constant_(block_second.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block_second.adaLN_modulation[-1].bias, 0)
@@ -453,72 +486,130 @@ class DiT(nn.Module):
     def forward(self, x, t, y, q_sample=None, noise=None,
         p_sample_count=0,
         t_ori = None,
-        p_sam_var = None):
+        p_sam_var = None,
+        output_change=None,
+        p_sam_rand = None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
-
-        # sigma = 5  # 噪声的标准差
-        # noise = torch.randn_like(x) * sigma
-        # x = x + noise
-
         if q_sample is not None:
-            if noise is None:
-                noise = torch.randn_like(x)
-            x = q_sample(x_start=x, noise=noise)  # 加噪
-        # elif p_sample_count == 0:
-        #     x = torch.randn(*x.shape, device=x.device)
-        elif p_sample_count != 0:
-            p_sam_mask = (
-                (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
-            )  # no noise when t == 0
-            x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
-
-
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        # x = self.x_embedder(x)
-        t = self.t_embedder(t)                   # (N, D)
-        y = self.y_embedder(y, self.training)    # (N, D)
-        c = t + y                               # (N, D)
+            to_change_x = x.clone()
             
-        # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
-        
-        # print("Before:")
-        # print(x.shape)
-        if q_sample is not None or p_sample_count != 0:
-            for block in self.blocks_first:
+            x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+            t = self.t_embedder(t)                   # (N, D)
+            y = self.y_embedder(y, self.training)    # (N, D)
+            c = t + y                               # (N, D)
+                
+            # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
+            
+            if q_sample is not None or p_sample_count != 0:
+                for block in self.blocks_first:
+                    x = block(x)                    # (N, T, D)
+
+
+            # x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+            # x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
+            # out_channels = x.size(1)
+            # batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
+
+            # x = batch_norm(x)
+            
+            if q_sample is not None:
+                if noise is None:
+                    noise = torch.randn_like(x)
+                x = q_sample(x_start=x, noise=noise)  # 加噪
+
+
+            # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
+
+            x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+            t = self.t_embedder(t)                   # (N, D)
+            y = self.y_embedder(y, self.training)    # (N, D)
+            c = t + y                               # (N, D)         
+
+            for block in self.blocks_second:
+                x = block(x, c)
+
+            x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+            x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
+            return x, to_change_x
+        else:
+            to_change_x = x.clone()
+            t_value = t.clone()
+
+            print(torch.var(x))
+            if p_sample_count != 0:
+                p_sam_mask = (
+                    (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+                )  # no noise when t == 0
+                x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
+                # x = x + p_sam_mask * torch.exp(0.5 * p_sam_var) * torch.randn_like(x)
+                to_change_x = x.clone()
+            
+            x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+            # x = self.x_embedder(x)
+            t = self.t_embedder(t)                   # (N, D)
+            y = self.y_embedder(y, self.training)    # (N, D)
+            c = t + y                               # (N, D)
+                
+            # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
+
+
+            if p_sample_count == 0:
+                for block in self.blocks_first:
+                    x = block(x, c)
+                x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+                x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
+                out_channels = x.size(1)
+                batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
+
+                x = batch_norm(x)
+                x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+                
+            
+            for block in self.blocks_second:
                 x = block(x, c)                    # (N, T, D)
 
-        # print("After:")
-        # print(torch.mean(x))
-        # print(torch.var(x))
-        # for block in self.blocks_first:
-        #     x = block(x)         
+            if torch.all(t_value == 0):
+                print("###############")
+                x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+                x = self.unpatchify(x)                   # (N, out_channels, H, W)
+                return x, to_change_x
 
-        # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2         
+            # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2   
 
+            for block in self.blocks_first:
+                x = block(x, c)
 
-        for block in self.blocks_second:
-            x = block(x, c)
+            x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+            x = self.unpatchify(x)                   # (N, out_channels, H, W)
 
-        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
-        x = self.unpatchify(x)                   # (N, out_channels, H, W)
-        return x
+            out_channels = x.size(1)
+            batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
+
+            x = batch_norm(x)
+
+            return x, to_change_x
+
 
     def forward_with_cfg(self, x, t, y, cfg_scale,
         p_sample_count=0,
         t_ori=None,
-        p_sam_var=None):
+        p_sam_var=None,
+        output_change=None):
         """
         Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance.
         """
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y, p_sample_count=p_sample_count, t_ori=t_ori, p_sam_var=p_sam_var)
+        model_out = self.forward(combined, t, y, p_sample_count=p_sample_count, t_ori=t_ori, p_sam_var=p_sam_var, output_change=output_change)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
@@ -621,6 +712,7 @@ def DiT_S_2(**kwargs):
 
 def DiT_S_4(**kwargs):
     return DiT(depth=12, hidden_size=384, patch_size=4, num_heads=6, **kwargs)
+    # return DiT(depth=12, hidden_size=384, patch_size=32, num_heads=6, **kwargs)
 
 def DiT_S_8(**kwargs):
     return DiT(depth=12, hidden_size=384, patch_size=8, num_heads=6, **kwargs)

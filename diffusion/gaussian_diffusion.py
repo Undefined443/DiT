@@ -205,6 +205,7 @@ class GaussianDiffusion:
         self.p_sample_count = 0
         self.t_ori = None
         self.p_sam_var = None
+        self.ori_x = None
 
     def q_mean_variance(self, x_start, t):
         """
@@ -280,13 +281,43 @@ class GaussianDiffusion:
         if model_kwargs is None:
             model_kwargs = {}
 
+        # if self.p_sample_count != 0:
+        #     p_sam_mask = (
+        #         (self.t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        #     )  # no noise when t == 0
+        #     # x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
+        #     x = x + p_sam_mask * th.exp(0.5 * self.p_sam_var) * th.randn_like(x)
+
         model_kwargs["p_sample_count"] = self.p_sample_count
-        model_kwargs["t_ori"] = self.t_ori
-        model_kwargs["p_sam_var"] = self.p_sam_var
+        if self.t_ori is not None:
+            model_kwargs["t_ori"] = self.t_ori.clone()
+        else:
+            model_kwargs["t_ori"] = None
+        if self.p_sam_var is not None:
+            model_kwargs["p_sam_var"] = np.copy(self.p_sam_var)
+        else:
+            model_kwargs["p_sam_var"] = None 
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output = model(x, t, **model_kwargs)
+
+        x_clone = x.clone()
+        # to_change_x = x.clone()
+        model_kwargs["p_sam_rand"] = None
+        # model_kwargs["to_change_x"] = None
+
+        p_sam_rand = th.randn_like(x)
+        model_kwargs["p_sam_rand"] = p_sam_rand
+        # model_kwargs["to_change_x"] = to_change_x
+        if self.p_sample_count != 0:
+            p_sam_mask = (
+                (self.t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+            )  # no noise when t == 0
+            x = x + p_sam_mask * th.exp(0.5 * _extract_into_tensor(self.p_sam_var, self.t_ori, x.shape)) * th.randn_like(x)
+            # x = x + p_sam_mask * th.exp(0.5 * self.p_sam_var) * p_sam_rand
+
+        model_output, to_change_x = model(x_clone, t, **model_kwargs)
+
         self.p_sample_count += 1
         if isinstance(model_output, tuple):
             model_output, extra = model_output
@@ -321,6 +352,9 @@ class GaussianDiffusion:
 
             model_log_variance = _extract_into_tensor(model_log_variance, t, x.shape)
 
+            # self.p_sam_var = model_log_variance
+            self.ori_x = x
+
 
         def process_xstart(x):
             if denoised_fn is not None:
@@ -335,9 +369,13 @@ class GaussianDiffusion:
             pred_xstart = process_xstart(
                 self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)
             )
-        model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
+        print(t)
+        print(pred_xstart.shape)
+        print(to_change_x.shape)
+        model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=to_change_x, t=t)
 
         assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
+        # assert model_log_variance.shape == pred_xstart.shape == x.shape
         return {
             "mean": model_mean,
             "variance": model_variance,
@@ -414,6 +452,13 @@ class GaussianDiffusion:
                  - 'sample': a random sample from the model.
                  - 'pred_xstart': a prediction of x_0.
         """
+        # if self.p_sample_count != 0:
+        #     p_sam_mask = (
+        #         (self.t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        #     )  # no noise when t == 0
+        #     # x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
+        #     x = x + p_sam_mask * th.exp(0.5 * self.p_sam_var) * th.randn_like(x)
+
         out = self.p_mean_variance(
             model,
             x,
@@ -423,14 +468,16 @@ class GaussianDiffusion:
             model_kwargs=model_kwargs,
         )
         self.t_ori = t
+
         # noise = th.randn_like(x)
         # nonzero_mask = (
         #     (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
         # )  # no noise when t == 0
-        # if cond_fn is not None:
-        #     out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
+        # # if cond_fn is not None:
+        # #     out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
         # sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
         # return {"sample": sample, "pred_xstart": out["pred_xstart"]}
+
         return {"sample": out["mean"], "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(
@@ -463,6 +510,8 @@ class GaussianDiffusion:
         :param progress: if True, show a tqdm progress bar.
         :return: a non-differentiable batch of samples.
         """
+        # self.p_sample_count = 0
+
         final = None
         for sample in self.p_sample_loop_progressive(
             model,
@@ -747,9 +796,7 @@ class GaussianDiffusion:
         if noise is None:
             noise = th.randn_like(x_start)
         # x_t = self.q_sample(x_start, t, noise=noise)
-        # print("Before:")
-        # print(th.mean(x_start))
-        # print(th.var(x_start))
+
         x_t = x_start.clone()
 
         terms = {}
@@ -767,7 +814,7 @@ class GaussianDiffusion:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
             model_kwargs["q_sample"] = partial(self.q_sample, t=t)
-            model_output = model(x_t, t, **model_kwargs)
+            model_output, _ = model(x_t, t, **model_kwargs)
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,

@@ -157,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("--image-size", type=int, choices=[256, 512], default=256)
     parser.add_argument("--num-classes", type=int, default=1000)
     # change from 1.5 to 1.0
-    parser.add_argument("--cfg-scale",  type=float, default=1.5)
+    parser.add_argument("--cfg-scale",  type=float, default=1.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
     parser.add_argument("--global-seed", type=int, default=0)
     parser.add_argument("--tf32", action=argparse.BooleanOptionalAction, default=True,
