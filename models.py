@@ -233,6 +233,32 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
+    def visualize_features(self, x, name):
+        """
+        将特征转换为可视化格式并保存
+        x: (N, T, D) 或 (N, C, H, W)
+        """
+        # 如果已经是图像格式 (N, C, H, W)
+        if len(x.shape) == 4:
+            save_image(x, name)
+        # 如果是特征格式 (N, T, D)
+        else:
+            # 取第一个样本的特征
+            features = x[0]  # (T, D)
+            # 将特征归一化到 [0,1] 范围
+            features = (features - features.min()) / (features.max() - features.min() + 1e-8)
+            # 重排特征为方形图像
+            size = int(math.sqrt(features.shape[0]))
+            features = features[:size*size].reshape(1, size, size, -1)  # 取前 size*size 个 patch
+            # 只取前 3 个通道进行可视化(如果特征维度>=3)
+            if features.shape[-1] >= 3:
+                features = features[..., :3]
+            else:  # 如果通道数小于 3, 复制到 3 通道
+                features = features.repeat(1, 1, 1, 3)
+            # 转换为图像格式 (1, 3, H, W)
+            features = features.permute(0, 3, 1, 2)
+            save_image(features, name)
+
     def forward(self, x, t, y, log_variance=None):
         """
         Forward pass of DiT.
@@ -241,9 +267,9 @@ class DiT(nn.Module):
         y: (N,) tensor of class labels
         """
         if not self.is_saved_image and not log_variance:
-            save_image(x, '1-x.png')
+            self.visualize_features(x, '1-x.png')
         elif not self.is_saved_image and log_variance:
-            save_image(x, '2-x.png')
+            self.visualize_features(x, '2-x.png')
 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
@@ -251,11 +277,9 @@ class DiT(nn.Module):
         c = t + y                                # (N, D)
 
         if not self.is_saved_image and not log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '1-x_embed.png')
+            self.visualize_features(x, '1-x_embed.png')
         elif not self.is_saved_image and log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '2-x_embed.png')
+            self.visualize_features(x, '2-x_embed.png')
 
         # 把 model 分为两块
         split_point = self.depth // 2
@@ -265,21 +289,17 @@ class DiT(nn.Module):
             x = block(x, c)                      # (N, T, D)
 
         if not self.is_saved_image and not log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '1-x_block_1.png')
+            self.visualize_features(x, '1-x_block_1.png')
         elif not self.is_saved_image and log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '2-x_block_1.png')
+            self.visualize_features(x, '2-x_block_1.png')
 
         # 对 x 进行归一化
         x = x / (torch.norm(x, dim=-1, keepdim=True) + 1e-6)
 
         if not self.is_saved_image and not log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '1-x_norm.png')
+            self.visualize_features(x, '1-x_norm.png')
         elif not self.is_saved_image and log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '2-x_norm.png')
+            self.visualize_features(x, '2-x_norm.png')
 
         # 如果传入了 log_variance 不为 None，则代表现在是 forward 的中间阶段，需要给 x 加噪
         if log_variance:
@@ -292,23 +312,26 @@ class DiT(nn.Module):
         x_t = x.clone()  # 函数要返回加噪后的 x_t
 
         if not self.is_saved_image and log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '2-x_noise.png')
+            self.visualize_features(x, '2-x_noise.png')
 
         # 第二部分 forward
         for block in self.blocks[split_point:]:
             x = block(x, c)                      # (N, T, D)
 
         if not self.is_saved_image and not log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '1-x_block_2.png')
+            self.visualize_features(x, '1-x_block_2.png')
         elif not self.is_saved_image and log_variance:
-            img = self.unpatchify(x)
-            save_image(img, '2-x_block_2.png')
+            self.visualize_features(x, '2-x_block_2.png')
             self.is_saved_image = True
 
         x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
+        if not self.is_saved_image and not log_variance:
+            self.visualize_features(x, '1-x_final.png')
+        elif not self.is_saved_image and log_variance:
+            self.visualize_features(x, '2-x_final.png')
+
         return (x, x_t)
 
     def forward_with_cfg(self, x, t, y, cfg_scale, log_variance=None):
