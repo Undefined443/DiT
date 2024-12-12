@@ -14,6 +14,7 @@ import torch.nn as nn
 import numpy as np
 import math
 from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
+from torchvision.utils import save_image
 
 
 def modulate(x, shift, scale):
@@ -166,6 +167,7 @@ class DiT(nn.Module):
         self.patch_size = patch_size
         self.num_heads = num_heads
         self.depth = depth
+        self.is_saved_image = False
 
         self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
@@ -238,10 +240,20 @@ class DiT(nn.Module):
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+        if not self.is_saved_image and not log_variance:
+            save_image(x, '1-x.png')
+        elif not self.is_saved_image and log_variance:
+            save_image(x, '2-x.png')
+
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
         y = self.y_embedder(y, self.training)    # (N, D)
         c = t + y                                # (N, D)
+
+        if not self.is_saved_image and not log_variance:
+            save_image(x, '1-x_embed.png')
+        elif not self.is_saved_image and log_variance:
+            save_image(x, '2-x_embed.png')
 
         # 把 model 分为两块
         split_point = self.depth // 2
@@ -250,8 +262,21 @@ class DiT(nn.Module):
         for block in self.blocks[:split_point]:
             x = block(x, c)                      # (N, T, D)
 
-        # 如果 log_variance 不为 None，则代表现在是 forward 的中间阶段，需要给 x 加噪
-        if log_variance is not None:
+        if not self.is_saved_image and not log_variance:
+            save_image(x, '1-x_block_1.png')
+        elif not self.is_saved_image and log_variance:
+            save_image(x, '2-x_block_1.png')
+
+        # 对 x 进行归一化
+        x = x / (torch.norm(x, dim=-1, keepdim=True) + 1e-6)
+
+        if not self.is_saved_image and not log_variance:
+            save_image(x, '1-x_norm.png')
+        elif not self.is_saved_image and log_variance:
+            save_image(x, '2-x_norm.png')
+
+        # 如果传入了 log_variance 不为 None，则代表现在是 forward 的中间阶段，需要给 x 加噪
+        if log_variance:
             noise = torch.randn_like(x)
             nonzero_mask = (
                 (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
@@ -260,9 +285,18 @@ class DiT(nn.Module):
 
         x_t = x.clone()  # 函数要返回加噪后的 x_t
 
+        if not self.is_saved_image and log_variance:
+            save_image(x, '2-x_noise.png')
+
         # 第二部分 forward
         for block in self.blocks[split_point:]:
             x = block(x, c)                      # (N, T, D)
+
+        if not self.is_saved_image and not log_variance:
+            save_image(x, '1-x_block_2.png')
+        elif not self.is_saved_image and log_variance:
+            save_image(x, '2-x_block_2.png')
+            self.is_saved_image = True
 
         x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
