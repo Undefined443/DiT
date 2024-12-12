@@ -250,10 +250,11 @@ class DiT(nn.Module):
             # 重排特征为方形图像
             size = int(math.sqrt(features.shape[0]))
             features = features[:size*size].reshape(1, size, size, -1)  # 取前 size*size 个 patch
-            # 只取前 3 个通道进行可视化(如果特征维度>=3)
+            # 只取前 3 个通道进行可视化（如果特征维度>=3）
             if features.shape[-1] >= 3:
                 features = features[..., :3]
-            else:  # 如果通道数小于 3, 复制到 3 通道
+            # 如果通道数小于 3, 复制到 3 通道
+            else:
                 features = features.repeat(1, 1, 1, 3)
             # 转换为图像格式 (1, 3, H, W)
             features = features.permute(0, 3, 1, 2)
