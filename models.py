@@ -251,9 +251,11 @@ class DiT(nn.Module):
         c = t + y                                # (N, D)
 
         if not self.is_saved_image and not log_variance:
-            save_image(x, '1-x_embed.png')
+            img = self.unpatchify(x)
+            save_image(img, '1-x_embed.png')
         elif not self.is_saved_image and log_variance:
-            save_image(x, '2-x_embed.png')
+            img = self.unpatchify(x)
+            save_image(img, '2-x_embed.png')
 
         # 把 model 分为两块
         split_point = self.depth // 2
@@ -263,17 +265,21 @@ class DiT(nn.Module):
             x = block(x, c)                      # (N, T, D)
 
         if not self.is_saved_image and not log_variance:
-            save_image(x, '1-x_block_1.png')
+            img = self.unpatchify(x)
+            save_image(img, '1-x_block_1.png')
         elif not self.is_saved_image and log_variance:
-            save_image(x, '2-x_block_1.png')
+            img = self.unpatchify(x)
+            save_image(img, '2-x_block_1.png')
 
         # 对 x 进行归一化
         x = x / (torch.norm(x, dim=-1, keepdim=True) + 1e-6)
 
         if not self.is_saved_image and not log_variance:
-            save_image(x, '1-x_norm.png')
+            img = self.unpatchify(x)
+            save_image(img, '1-x_norm.png')
         elif not self.is_saved_image and log_variance:
-            save_image(x, '2-x_norm.png')
+            img = self.unpatchify(x)
+            save_image(img, '2-x_norm.png')
 
         # 如果传入了 log_variance 不为 None，则代表现在是 forward 的中间阶段，需要给 x 加噪
         if log_variance:
@@ -286,16 +292,19 @@ class DiT(nn.Module):
         x_t = x.clone()  # 函数要返回加噪后的 x_t
 
         if not self.is_saved_image and log_variance:
-            save_image(x, '2-x_noise.png')
+            img = self.unpatchify(x)
+            save_image(img, '2-x_noise.png')
 
         # 第二部分 forward
         for block in self.blocks[split_point:]:
             x = block(x, c)                      # (N, T, D)
 
         if not self.is_saved_image and not log_variance:
-            save_image(x, '1-x_block_2.png')
+            img = self.unpatchify(x)
+            save_image(img, '1-x_block_2.png')
         elif not self.is_saved_image and log_variance:
-            save_image(x, '2-x_block_2.png')
+            img = self.unpatchify(x)
+            save_image(img, '2-x_block_2.png')
             self.is_saved_image = True
 
         x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
