@@ -240,6 +240,7 @@ class DiT(nn.Module):
         """
         # 如果已经是图像格式 (N, C, H, W)
         if len(x.shape) == 4:
+            print(x.shape)
             save_image(x, name)
         # 如果是特征格式 (N, T, D)
         else:
