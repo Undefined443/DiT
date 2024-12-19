@@ -153,7 +153,7 @@ def main(args):
     logger.info(f"DiT Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
-    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0)
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-4)
 
     # Setup data:
     transform = transforms.Compose([
@@ -265,7 +265,7 @@ if __name__ == "__main__":
     parser.add_argument("--vae", type=str, choices=["ema", "mse"], default="ema")  # Choice doesn't affect training
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--log-every", type=int, default=100)
-    parser.add_argument("--ckpt-every", type=int, default=5_000)
+    parser.add_argument("--ckpt-every", type=int, default=20_000)
     parser.add_argument("--predict-xstart", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--learn-sigma", action=argparse.BooleanOptionalAction, default=False)
     args = parser.parse_args()

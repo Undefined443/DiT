@@ -413,16 +413,16 @@ class DiT(nn.Module):
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        split_point = depth // 6
-        self.blocks_first = nn.ModuleList([
-            UNetFeatureExtractor(4, 4) for _ in range(split_point)
-        ])
+        split_point = 0
+        # self.blocks_first = nn.ModuleList([
+        #     UNetFeatureExtractor(4, 4) for _ in range(split_point)
+        # ])
         # self.blocks_first = nn.ModuleList([
         #     ResNetMLP(input_dim=384, hidden_dim=512, output_dim=384) for _ in range(split_point)
         # ])
-        # self.blocks_first = nn.ModuleList([
-        #     DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
-        # ])
+        self.blocks_first = nn.ModuleList([
+            DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(split_point)
+        ])
         self.blocks_second = nn.ModuleList([
             DiTBlock(hidden_size, num_heads, mlp_ratio) for _ in range(depth - split_point)
         ])
@@ -455,9 +455,9 @@ class DiT(nn.Module):
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
         # Zero-out adaLN modulation layers in DiT blocks:
-        # for block_first in self.blocks_first:
-        #     nn.init.constant_(block_first.adaLN_modulation[-1].weight, 0)
-        #     nn.init.constant_(block_first.adaLN_modulation[-1].bias, 0)
+        for block_first in self.blocks_first:
+            nn.init.constant_(block_first.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block_first.adaLN_modulation[-1].bias, 0)
         for block_second in self.blocks_second:
             nn.init.constant_(block_second.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block_second.adaLN_modulation[-1].bias, 0)
@@ -487,115 +487,191 @@ class DiT(nn.Module):
         p_sample_count=0,
         t_ori = None,
         p_sam_var = None,
-        output_change=None,
-        p_sam_rand = None):
+        output_change=None
+        ):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
         t: (N,) tensor of diffusion timesteps
         y: (N,) tensor of class labels
         """
+    # if q_sample is not None:
+        to_change_x = x.clone()
+
         if q_sample is not None:
+            if noise is None:
+                noise = torch.randn_like(x)
+            x = q_sample(x_start=x, noise=noise)  # 加噪
+        elif q_sample is None and p_sample_count != 0:
+            p_sam_mask = (
+                (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+            )  # no noise when t == 0
+            x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
+            # x = x + p_sam_mask * torch.exp(0.5 * p_sam_var) * torch.randn_like(x)
             to_change_x = x.clone()
-            
-            x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-            t = self.t_embedder(t)                   # (N, D)
-            y = self.y_embedder(y, self.training)    # (N, D)
-            c = t + y                               # (N, D)
-                
-            # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
-            
-            if q_sample is not None or p_sample_count != 0:
-                for block in self.blocks_first:
-                    x = block(x)                    # (N, T, D)
+        
+        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        t = self.t_embedder(t)                   # (N, D)
+        y = self.y_embedder(y, self.training)    # (N, D)
+        c = t + y                               # (N, D)
 
+        # out_channels = x.size(2)
 
-            # x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
-            # x = self.unpatchify(x)                   # (N, out_channels, H, W)
+        # batch_norm = nn.BatchNorm1d(out_channels, affine=False).to(x.device)
 
-            # out_channels = x.size(1)
-            # batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
+        # x_transposed = x.transpose(1, 2)  # 变为 (N, D, T)
+        # x_normalized = batch_norm(x_transposed)
+        # x = x_normalized.transpose(1, 2)  # 再变回 (N, T, D)
 
-            # x = batch_norm(x)
-            
-            if q_sample is not None:
-                if noise is None:
-                    noise = torch.randn_like(x)
-                x = q_sample(x_start=x, noise=noise)  # 加噪
+        
+        # if q_sample is not None:
+        #     if noise is None:
+        #         noise = torch.randn_like(x)
+        #     x = q_sample(x_start=x, noise=noise)  # 加噪
+        # elif q_sample is None and p_sample_count != 0:
+        #     p_sam_mask = (
+        #         (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        #     )  # no noise when t == 0
+        #     x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
+        #     # x = x + p_sam_mask * torch.exp(0.5 * p_sam_var) * torch.randn_like(x)
+        #     to_change_x = x.clone()
 
-
-            # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
-
-            x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-            t = self.t_embedder(t)                   # (N, D)
-            y = self.y_embedder(y, self.training)    # (N, D)
-            c = t + y                               # (N, D)         
-
-            for block in self.blocks_second:
-                x = block(x, c)
-
-            x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
-            x = self.unpatchify(x)                   # (N, out_channels, H, W)
-
-            return x, to_change_x
-        else:
-            to_change_x = x.clone()
-            t_value = t.clone()
-
-            print(torch.var(x))
-            if p_sample_count != 0:
-                p_sam_mask = (
-                    (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
-                )  # no noise when t == 0
-                x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
-                # x = x + p_sam_mask * torch.exp(0.5 * p_sam_var) * torch.randn_like(x)
-                to_change_x = x.clone()
-            
-            x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-            # x = self.x_embedder(x)
-            t = self.t_embedder(t)                   # (N, D)
-            y = self.y_embedder(y, self.training)    # (N, D)
-            c = t + y                               # (N, D)
-                
-            # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
-
-
-            if p_sample_count == 0:
-                for block in self.blocks_first:
-                    x = block(x, c)
-                x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
-                x = self.unpatchify(x)                   # (N, out_channels, H, W)
-
-                out_channels = x.size(1)
-                batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
-
-                x = batch_norm(x)
-                x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-                
-            
-            for block in self.blocks_second:
+        
+        if q_sample is not None or p_sample_count != 0:
+            for block in self.blocks_first:
                 x = block(x, c)                    # (N, T, D)
 
-            if torch.all(t_value == 0):
-                print("###############")
-                x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
-                x = self.unpatchify(x)                   # (N, out_channels, H, W)
-                return x, to_change_x
 
-            # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2   
+        # x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        # x = self.unpatchify(x)                   # (N, out_channels, H, W)
 
-            for block in self.blocks_first:
-                x = block(x, c)
+        # out_channels = x.size(1)
+        # batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
 
-            x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
-            x = self.unpatchify(x)                   # (N, out_channels, H, W)
+        # x = batch_norm(x)
 
-            out_channels = x.size(1)
-            batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
+        # out_channels = x.size(2)
 
-            x = batch_norm(x)
+        # batch_norm = nn.BatchNorm1d(out_channels, affine=False).to(x.device)
 
-            return x, to_change_x
+        # x_transposed = x.transpose(1, 2)  # 变为 (N, D, T)
+        # x_normalized = batch_norm(x_transposed)
+        # x = x_normalized.transpose(1, 2)  # 再变回 (N, T, D)
+        
+        # elif p_sample_count != 0:
+
+        #     x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        #     x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
+
+        #     print(torch.var(x))
+        #     p_sam_mask = (
+        #         (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        #     )  # no noise when t == 0
+        #     x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
+        #     # x = x + p_sam_mask * torch.exp(0.5 * p_sam_var) * torch.randn_like(x)
+        #     to_change_x = x.clone()
+
+        #     x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        # else:
+        #     x = torch.randn(*x.shape, device=x.device)
+        #     to_change_x = x.clone()
+
+
+        # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2   
+
+        # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2         
+        # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+
+        for block in self.blocks_second:
+            x = block(x, c)
+
+        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
+        return x, to_change_x
+    
+        # else:
+        #     to_change_x = x.clone()
+        #     t_value = t.clone()
+
+        #     if p_sample_count != 0:
+
+        #         # out_channels = x.size(2)
+
+        #         # batch_norm = nn.BatchNorm1d(out_channels, affine=False).to(x.device)
+
+        #         # x_transposed = x.transpose(1, 2)  # 变为 (N, D, T)
+        #         # x_normalized = batch_norm(x_transposed)
+        #         # x = x_normalized.transpose(1, 2)  # 再变回 (N, T, D)
+
+        #         # out_channels = x.size(1)
+        #         # batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
+
+        #         # x = batch_norm(x)
+
+        #         # print(torch.var(x))
+        #         p_sam_mask = (
+        #             (t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        #         )  # no noise when t == 0
+        #         x = x + p_sam_mask * torch.exp(0.5 * _extract_into_tensor(p_sam_var, t_ori, x.shape)) * torch.randn_like(x)
+        #         # x = x + p_sam_mask * torch.exp(0.5 * p_sam_var) * torch.randn_like(x)
+        #         to_change_x = x.clone()
+
+        #         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        #         t = self.t_embedder(t)                   # (N, D)
+        #         y = self.y_embedder(y, self.training)    # (N, D)
+        #         c = t + y                               # (N, D)
+        #     else:
+        #         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        #         # x = self.x_embedder(x)
+        #         t = self.t_embedder(t)                   # (N, D)
+        #         y = self.y_embedder(y, self.training)    # (N, D)
+        #         c = t + y                               # (N, D)
+
+        #         # for block in self.blocks_first:
+        #         #     x = block(x)
+
+        #         # x = torch.randn(*x.shape, device=x.device)
+        #         # to_change_x = x.clone()
+
+        #         # x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        #         # x = self.unpatchify(x)                   # (N, out_channels, H, W)
+
+        #         # out_channels = x.size(1)
+        #         # batch_norm = nn.BatchNorm2d(out_channels, affine=False).to(x.device)
+
+        #         # x = batch_norm(x)
+
+        #         # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2   
+                
+        #     # x = x + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2 
+            
+        #     for block in self.blocks_second:
+        #         x = block(x, c)                    # (N, T, D)
+
+        #     if torch.all(t_value == 0):
+        #         print("###############")
+        #         x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        #         x = self.unpatchify(x)                   # (N, out_channels, H, W)
+        #         return x, to_change_x
+            
+        #     x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        #     x = self.unpatchify(x)                   # (N, out_channels, H, W)
+        #     # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2   
+
+        #     for block in self.blocks_first:
+        #         x = block(x)
+
+        #     # out_channels = x.size(2)
+
+        #     # batch_norm = nn.BatchNorm1d(out_channels, affine=False).to(x.device)
+
+        #     # x_transposed = x.transpose(1, 2)  # 变为 (N, D, T)
+        #     # x_normalized = batch_norm(x_transposed)
+        #     # x = x_normalized.transpose(1, 2)  # 再变回 (N, T, D)
+
+        #     return x, to_change_x
 
 
     def forward_with_cfg(self, x, t, y, cfg_scale,
@@ -609,16 +685,20 @@ class DiT(nn.Module):
         # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
         half = x[: len(x) // 2]
         combined = torch.cat([half, half], dim=0)
-        model_out = self.forward(combined, t, y, p_sample_count=p_sample_count, t_ori=t_ori, p_sam_var=p_sam_var, output_change=output_change)
+        model_out, model_out2 = self.forward(combined, t, y, p_sample_count=p_sample_count, t_ori=t_ori, p_sam_var=p_sam_var, output_change=output_change)
         # For exact reproducibility reasons, we apply classifier-free guidance on only
         # three channels by default. The standard approach to cfg applies it to all channels.
         # This can be done by uncommenting the following line and commenting-out the line following that.
         # eps, rest = model_out[:, :self.in_channels], model_out[:, self.in_channels:]
         eps, rest = model_out[:, :3], model_out[:, 3:]
+        eps2, rest2 = model_out2[:, :3], model_out2[:, 3:]
         cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
+        cond_eps2, uncond_eps2 = torch.split(eps2, len(eps2) // 2, dim=0)
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
+        half_eps2 = uncond_eps2 + cfg_scale * (cond_eps2 - uncond_eps2)
         eps = torch.cat([half_eps, half_eps], dim=0)
-        return torch.cat([eps, rest], dim=1)
+        eps2 = torch.cat([half_eps2, half_eps2], dim=0)
+        return torch.cat([eps, rest], dim=1), torch.cat([eps2, rest2], dim=1)
 
 
 #################################################################################
@@ -681,7 +761,8 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 #################################################################################
 
 def DiT_XL_2(**kwargs):
-    return DiT(depth=28, hidden_size=1152, patch_size=2, num_heads=16, **kwargs)
+    # return DiT(depth=28, hidden_size=1152, patch_size=2, num_heads=16, **kwargs)
+    return DiT(depth=28, hidden_size=1152, patch_size=32, num_heads=16, **kwargs)
 
 def DiT_XL_4(**kwargs):
     return DiT(depth=28, hidden_size=1152, patch_size=4, num_heads=16, **kwargs)
@@ -709,6 +790,7 @@ def DiT_B_8(**kwargs):
 
 def DiT_S_2(**kwargs):
     return DiT(depth=12, hidden_size=384, patch_size=2, num_heads=6, **kwargs)
+    # return DiT(depth=12, hidden_size=384, patch_size=1, num_heads=6, **kwargs)
 
 def DiT_S_4(**kwargs):
     return DiT(depth=12, hidden_size=384, patch_size=4, num_heads=6, **kwargs)

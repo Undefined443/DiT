@@ -302,13 +302,10 @@ class GaussianDiffusion:
         assert t.shape == (B,)
 
         x_clone = x.clone()
-        # to_change_x = x.clone()
-        model_kwargs["p_sam_rand"] = None
-        # model_kwargs["to_change_x"] = None
+        # model_kwargs["p_sam_rand"] = None
 
-        p_sam_rand = th.randn_like(x)
-        model_kwargs["p_sam_rand"] = p_sam_rand
-        # model_kwargs["to_change_x"] = to_change_x
+        # p_sam_rand = th.randn_like(x)
+        # model_kwargs["p_sam_rand"] = p_sam_rand
         if self.p_sample_count != 0:
             p_sam_mask = (
                 (self.t_ori != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
@@ -352,7 +349,6 @@ class GaussianDiffusion:
 
             model_log_variance = _extract_into_tensor(model_log_variance, t, x.shape)
 
-            # self.p_sam_var = model_log_variance
             self.ori_x = x
 
 
@@ -372,10 +368,14 @@ class GaussianDiffusion:
         print(t)
         print(pred_xstart.shape)
         print(to_change_x.shape)
-        model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=to_change_x, t=t)
 
-        assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
-        # assert model_log_variance.shape == pred_xstart.shape == x.shape
+        if th.all(t == 0):
+            model_mean = pred_xstart
+        else:
+            model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=to_change_x, t=t)
+
+        # assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
+        # assert model_mean.shape == pred_xstart.shape == to_change_x.shape
         return {
             "mean": model_mean,
             "variance": model_variance,
